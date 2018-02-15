@@ -1,0 +1,23 @@
+ignored = ["github.com/ethereum/go-ethereum/whisper/notifications"]
+
+[prune]
+  unused-packages = true
+  go-tests = true
+
+  [[prune.project]]
+    name = "github.com/karalabe/hid"
+    non-go = false
+    unused-packages = false
+
+  [[prune.project]]
+    name = "github.com/ethereum/go-ethereum"
+    non-go = false
+    unused-packages = false
+
+[[constraint]]
+  name = "github.com/status-im/status-go"
+  branch = "develop"
+
+[[constraint]]
+  name = "github.com/ethereum/go-ethereum"
+  branch = "release/1.7"
