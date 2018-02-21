@@ -22,7 +22,7 @@ type StatusMessage struct {
 	Text        string `json:"text"`
 	ChannelName string `json:"channel"`
 	Timestamp   int64  `json:"ts"`
-	Raw         string
+	Raw         string `json:"-"`
 }
 
 func NewStatusMessage(from, text, channel string) StatusMessage {

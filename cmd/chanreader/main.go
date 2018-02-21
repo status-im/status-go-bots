@@ -4,11 +4,12 @@ import (
 	"log"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/mandrigin/status-go-bots/bots"
 )
 
 func main() {
-	messages := NewMessagesStore()
+	messages := NewMessagesStore(1000)
 	defer messages.Close()
 
 	conf := bots.Config{Password: "my-cool-password", Channel: "humans-need-not-apply", Nickname: "Cloudy Test Baboon"}
@@ -20,13 +21,13 @@ func main() {
 		}
 	})
 
-	go func() {
-		for {
-			log.Printf("MESSAGES Messages: %d", len(messages.Messages("humans")))
-			time.Sleep(1 * time.Second)
-		}
-	}()
+	log.Println("Node started, %v", node)
 
-	// wait till node has been stopped
-	node.Wait()
+	r := gin.Default()
+	r.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"messages": messages.Messages("humans"),
+		})
+	})
+	r.Run() // listen and serve on 0.0.0.0:8080
 }

@@ -13,10 +13,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-const (
-	maxCount = 10
-)
-
 // ByTimestamp implements sort.Interface for []Person based on
 // the Timestamp field.
 type ByTimestamp []bots.StatusMessage
@@ -28,9 +24,10 @@ func (a ByTimestamp) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestam
 type messagesStore struct {
 	db       *leveldb.DB
 	messages []bots.StatusMessage
+	maxCount int
 }
 
-func NewMessagesStore() *messagesStore {
+func NewMessagesStore(maxCount int) *messagesStore {
 	cwd, _ := os.Getwd()
 	db, err := leveldb.OpenFile(cwd+"/messages_store", nil)
 	if err != nil {
@@ -42,11 +39,11 @@ func NewMessagesStore() *messagesStore {
 	sort.Sort(ByTimestamp(messages))
 	log.Println("loaded messages", len(messages), "\n\nV", messages)
 
-	return &messagesStore{db, messages}
+	return &messagesStore{db, messages, maxCount}
 }
 
 func (ms *messagesStore) Add(message bots.StatusMessage) error {
-	if len(ms.messages) >= maxCount {
+	if len(ms.messages) >= ms.maxCount {
 		if message.Timestamp < ms.messages[0].Timestamp {
 			log.Println("Message is too old, ignoring", message.ID, message.Timestamp)
 			return nil
@@ -59,8 +56,8 @@ func (ms *messagesStore) Add(message bots.StatusMessage) error {
 
 	toRemove := make([]bots.StatusMessage, 0)
 	fromIdx := 0
-	if len(ms.messages) >= maxCount {
-		fromIdx = len(ms.messages) - maxCount + 1
+	if len(ms.messages) >= ms.maxCount {
+		fromIdx = len(ms.messages) - ms.maxCount + 1
 		toRemove = make([]bots.StatusMessage, fromIdx)
 		copy(toRemove, ms.messages[:fromIdx])
 	}
