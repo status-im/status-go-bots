@@ -21,6 +21,7 @@
 
 # Session
 Session.vim
+.undodir/*
 
 # Temporary
 .netrwhist
