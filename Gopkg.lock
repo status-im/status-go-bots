@@ -288,25 +288,12 @@
   packages = [
     "extkeys",
     "geth/account",
-    "geth/api",
     "geth/common",
-    "geth/jail",
-    "geth/jail/console",
-    "geth/jail/internal/fetch",
-    "geth/jail/internal/loop",
-    "geth/jail/internal/loop/looptask",
-    "geth/jail/internal/promise",
-    "geth/jail/internal/timers",
-    "geth/jail/internal/vm",
     "geth/log",
     "geth/mailservice",
     "geth/node",
-    "geth/notification/fcm",
     "geth/params",
     "geth/rpc",
-    "geth/signal",
-    "geth/transactions",
-    "geth/transactions/queue",
     "metrics/whisper",
     "static"
   ]
@@ -433,6 +420,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e3f3c94d0516adad7db58c4241c13ff5edaf594835977c5f11a86dba707228c9"
+  inputs-digest = "36d462e86ab5e58c3d016aebba94a5f0ee2a170a41f721dd3bf322f40b922970"
   solver-name = "gps-cdcl"
   solver-version = 1
