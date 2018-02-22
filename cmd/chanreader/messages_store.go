@@ -69,7 +69,9 @@ func (ms *messagesStore) Add(message bots.StatusMessage) error {
 }
 
 func (ms *messagesStore) Messages(channel string) []bots.StatusMessage {
-	return messagesFromIterator(ms.db.NewIterator(util.BytesPrefix([]byte(channel)), nil))
+	messages := messagesFromIterator(ms.db.NewIterator(util.BytesPrefix([]byte(channel)), nil))
+	sort.Sort(ByTimestamp(messages))
+	return messages
 }
 
 func (ms *messagesStore) Close() {

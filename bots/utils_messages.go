@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	messageRegexString = `{:message-id "(?P<ID>.+)",\s+:group-id "(?P<GroupID>.+)",\s+:content "(?P<Content>.+)",\s+:username "(?P<Username>.+)",\s+:type :public-group-message.+:timestamp (?P<Timestamp>\d+)}`
+	messageRegexString = `{:message-id "(?P<ID>.+)",\s+:group-id "(?P<GroupID>.+)",\s+:content "(?P<Content>.+)",\s+:username ["]?(?P<Username>.+)["]?,\s+:type :public-group-message.+:timestamp (?P<Timestamp>\d+)}`
 )
 
 var messageRegex *regexp.Regexp = regexp.MustCompile(messageRegexString)
