@@ -3,6 +3,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/Bowery/prompt"
+  packages = ["."]
+  revision = "94b504f42fdd503acc3b3c79ec2b517d90e0de8a"
+
+[[projects]]
+  branch = "master"
   name = "github.com/NaySoftware/go-fcm"
   packages = ["."]
   revision = "28fff9381d17f35619309c7a5ada41d26030d976"
@@ -201,6 +207,12 @@
   revision = "93a94ab6671087f0768f1d4e701c0ec14f449df9"
 
 [[projects]]
+  name = "github.com/labstack/gommon"
+  packages = ["color"]
+  revision = "57409ada9da0f2afad6664c49502f8c50fbd8476"
+  version = "0.2.3"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -217,6 +229,21 @@
   packages = ["pbutil"]
   revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/mkideal/cli"
+  packages = ["."]
+  revision = "0bc4738ef26827a45d3b50394d84d283f733ad63"
+  version = "v0.0.1"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mkideal/pkg"
+  packages = [
+    "debug",
+    "expr"
+  ]
+  revision = "3e188c9e7ecc83d0fe7040a9161ce3c67885470d"
 
 [[projects]]
   name = "github.com/pborman/uuid"
@@ -454,6 +481,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8c9ba5d210f9f82540f3b573534fc18db37639f91b589eea23b0311866f9b686"
+  inputs-digest = "fbf6e3b93f4ea4939d4233a1030c8e8f9dff75f883d8e1362f2e5cb7c16ac986"
   solver-name = "gps-cdcl"
   solver-version = 1
