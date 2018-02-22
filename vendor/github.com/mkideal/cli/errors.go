@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	errNotPointToStruct = errors.New("argv does not indirect a struct")
-	errNotAPointer      = errors.New("argv is not a pointer")
-	errCliTagTooMany    = errors.New("cli tag too many")
+	errNotAPointerToStruct = errors.New("not a pointer to struct")
+	errNotAPointer         = errors.New("argv is not a pointer")
+	errCliTagTooMany       = errors.New("cli tag too many")
 )
 
 type (
@@ -32,6 +32,14 @@ type (
 
 	wrapError struct {
 		err error
+		msg string
+	}
+
+	argvError struct {
+		isEmpty      bool
+		isOutOfRange bool
+
+		ith int
 		msg string
 	}
 )
@@ -85,4 +93,14 @@ func wrapErr(err error, appendString string, clr color.Color) error {
 	}
 	buff.WriteString(appendString)
 	return wrapError{err: err, msg: buff.String()}
+}
+
+func (e argvError) Error() string {
+	if e.isEmpty {
+		return "argv list is empty"
+	}
+	if e.isOutOfRange {
+		return "argv list out of range"
+	}
+	return fmt.Sprintf("%dth argv: %s", e.ith, e.msg)
 }

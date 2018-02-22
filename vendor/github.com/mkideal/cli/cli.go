@@ -29,11 +29,11 @@ func RunWithArgs(argv interface{}, args []string, fn CommandFunc, descs ...strin
 		Fn:          fn,
 	}).Run(args[1:])
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 	}
 }
 
-// Root registers forest for root and return root
+// Root registers forest for root and returns root
 func Root(root *Command, forest ...*CommandTree) *Command {
 	root.RegisterTree(forest...)
 	return root
@@ -54,46 +54,62 @@ func Parse(args []string, argv interface{}) error {
 	return fset.err
 }
 
-//------------------
-// Implements parse
-//------------------
-
 func parseArgv(args []string, argv interface{}, clr color.Color) *flagSet {
-	var (
-		typ     = reflect.TypeOf(argv)
-		val     = reflect.ValueOf(argv)
-		flagSet = newFlagSet()
-	)
-	switch typ.Kind() {
-	case reflect.Ptr:
-		if reflect.Indirect(val).Type().Kind() != reflect.Struct {
-			flagSet.err = errNotPointToStruct
-			return flagSet
-		}
-		parseWithTypeValue(args, typ, val, flagSet, clr)
-		return flagSet
-	default:
-		flagSet.err = errNotAPointer
-		return flagSet
-	}
+	return parseArgvList(args, []interface{}{argv}, clr)
 }
 
-func usage(v interface{}, clr color.Color, style UsageStyle) string {
-	var (
-		typ     = reflect.TypeOf(v)
-		val     = reflect.ValueOf(v)
-		flagSet = newFlagSet()
-	)
-	if typ.Kind() == reflect.Ptr &&
-		reflect.Indirect(val).Type().Kind() == reflect.Struct {
-		// initialize flagSet
-		initFlagSet(typ, val, flagSet, clr, true)
-		if flagSet.err != nil {
-			return ""
+func parseArgvList(args []string, argvList []interface{}, clr color.Color) *flagSet {
+	flagSet := newFlagSet()
+	for _, argv := range argvList {
+		if argv == nil {
+			continue
 		}
-		return flagSlice(flagSet.flagSlice).StringWithStyle(clr, style)
+		var (
+			typ = reflect.TypeOf(argv)
+			val = reflect.ValueOf(argv)
+		)
+		switch typ.Kind() {
+		case reflect.Ptr:
+			if reflect.Indirect(val).Type().Kind() != reflect.Struct {
+				flagSet.err = errNotAPointerToStruct
+				return flagSet
+			}
+			initFlagSet(typ, val, flagSet, clr, false)
+			if flagSet.err != nil {
+				return flagSet
+			}
+		default:
+			flagSet.err = errNotAPointer
+			return flagSet
+		}
 	}
-	return ""
+	parseArgsToFlagSet(args, flagSet, clr)
+	return flagSet
+}
+
+func usage(argvList []interface{}, clr color.Color, style UsageStyle) string {
+	flagSet := newFlagSet()
+	buf := bytes.NewBufferString("")
+	for i := len(argvList) - 1; i >= 0; i-- {
+		v := argvList[i]
+		if v == nil {
+			continue
+		}
+		var (
+			typ = reflect.TypeOf(v)
+			val = reflect.ValueOf(v)
+		)
+		if typ.Kind() == reflect.Ptr &&
+			reflect.Indirect(val).Type().Kind() == reflect.Struct {
+			// initialize flagSet
+			initFlagSet(typ, val, flagSet, clr, true)
+			if flagSet.err != nil {
+				return ""
+			}
+		}
+	}
+	buf.WriteString(flagSlice(flagSet.flagSlice).StringWithStyle(clr, style))
+	return buf.String()
 }
 
 func initFlagSet(typ reflect.Type, val reflect.Value, flagSet *flagSet, clr color.Color, dontSetValue bool) {
@@ -104,13 +120,18 @@ func initFlagSet(typ reflect.Type, val reflect.Value, flagSet *flagSet, clr colo
 	)
 	for i := 0; i < numField; i++ {
 		var (
-			typField     = typElem.Field(i)
-			valField     = valElem.Field(i)
-			tag, isEmpty = parseTag(typField.Name, typField.Tag)
+			typField          = typElem.Field(i)
+			valField          = valElem.Field(i)
+			tag, isEmpty, err = parseTag(typField.Name, typField.Tag)
 		)
+		if err != nil {
+			flagSet.err = err
+			return
+		}
 		if tag == nil {
 			continue
 		}
+
 		// if `cli` tag is empty and the field is a struct
 		if isEmpty && valField.Kind() == reflect.Struct {
 			var (
@@ -152,7 +173,7 @@ func initFlagSet(typ reflect.Type, val reflect.Value, flagSet *flagSet, clr colo
 		names := append(fl.tag.shortNames, fl.tag.longNames...)
 		for i, name := range names {
 			if _, ok := flagSet.flagMap[name]; ok {
-				flagSet.err = fmt.Errorf("flag %s repeat", clr.Bold(name))
+				flagSet.err = fmt.Errorf("option %s repeated", clr.Bold(name))
 				return
 			}
 			flagSet.flagMap[name] = fl
@@ -166,12 +187,7 @@ func initFlagSet(typ reflect.Type, val reflect.Value, flagSet *flagSet, clr colo
 	}
 }
 
-func parseWithTypeValue(args []string, typ reflect.Type, val reflect.Value, flagSet *flagSet, clr color.Color) {
-	initFlagSet(typ, val, flagSet, clr, false)
-	if flagSet.err != nil {
-		return
-	}
-
+func parseArgsToFlagSet(args []string, flagSet *flagSet, clr color.Color) {
 	size := len(args)
 	for i := 0; i < size; i++ {
 		arg := args[i]
@@ -226,12 +242,12 @@ func parseWithTypeValue(args []string, typ reflect.Type, val reflect.Value, flag
 		// not found in flagMap
 		// it's an invalid flag if arg has prefix `--`
 		if strings.HasPrefix(arg, dashTwo) {
-			flagSet.err = fmt.Errorf("undefined flag %s", clr.Bold(arg))
+			flagSet.err = fmt.Errorf("undefined option %s", clr.Bold(arg))
 			return
 		}
 
 		// try parse `-F<value>`
-		if parseSiameseFlag(flagSet, arg[0:2], args[i][2:], clr) {
+		if _, ok := parseSiameseFlag(flagSet, arg[0:2], args[i][2:], clr); ok {
 			continue
 		} else if flagSet.err != nil {
 			return
@@ -278,11 +294,11 @@ func parseWithTypeValue(args []string, typ reflect.Type, val reflect.Value, flag
 
 	buff := bytes.NewBufferString("")
 	for _, fl := range flagSet.flagSlice {
-		if !fl.isAssigned && fl.tag.required {
+		if !fl.isAssigned && fl.tag.isRequired {
 			if buff.Len() > 0 {
 				buff.WriteByte('\n')
 			}
-			fmt.Fprintf(buff, "required argument %s missing", clr.Bold(fl.name()))
+			fmt.Fprintf(buff, "required parameter %s missing", clr.Bold(fl.name()))
 		}
 	}
 	if buff.Len() > 0 && !flagSet.hasForce {
@@ -296,18 +312,22 @@ func parseToFoundFlag(flagSet *flagSet, fl *flag, strs []string, arg, next strin
 	if l == 1 {
 		if fl.isBoolean() {
 			flagSet.err = fl.set(arg, "true", clr)
-		} else {
+		} else if fl.isCounter() {
+			fl.counterIncr("", clr)
+		} else if offset > 0 {
 			flagSet.err = fl.set(arg, next, clr)
 			retOffset = offset
+		} else {
+			//flagSet.err = fmt.Errorf("missing argument")
+			flagSet.err = fl.set(arg, "", clr)
 		}
 	} else if l == 2 {
 		flagSet.err = fl.set(arg, strs[1], clr)
 	} else {
-		flagSet.err = fmt.Errorf("too many(%d) value", l)
+		flagSet.err = fmt.Errorf("too many(%d) arguments", l)
 	}
 	if flagSet.err != nil {
-		name := clr.Bold(fl.name())
-		flagSet.err = fmt.Errorf("argument %s invalid: %v", name, flagSet.err)
+		flagSet.err = fmt.Errorf("parameter %s invalid: %v", clr.Bold(arg), flagSet.err)
 		return retOffset
 	}
 	flagSet.values[arg] = []string{fmt.Sprintf("%v", fl.value.Interface())}
@@ -321,28 +341,33 @@ func parseFlagCharByChar(flagSet *flagSet, arg string, clr color.Color) {
 		tmp := dashOne + string([]byte{c})
 		fl, ok := flagSet.flagMap[tmp]
 		if !ok {
-			flagSet.err = fmt.Errorf("undefined flag %s", clr.Bold(tmp))
+			flagSet.err = fmt.Errorf("undefined option %s", clr.Bold(tmp))
 			return
 		}
 
-		if !fl.isBoolean() {
-			flagSet.err = fmt.Errorf("each fold flag should be boolean, but %s not", clr.Bold(tmp))
+		if fl.isBoolean() {
+			fl.set(tmp, "true", clr)
+			flagSet.values[tmp] = []string{"true"}
+		} else if fl.isCounter() {
+			fl.counterIncr("", clr)
+		} else {
+			flagSet.err = fmt.Errorf("each fold option should be boolean, but %s not", clr.Bold(tmp))
 			return
 		}
-
-		fl.set(tmp, "true", clr)
-		flagSet.values[tmp] = []string{"true"}
 	}
 }
 
-func parseSiameseFlag(flagSet *flagSet, firstHalf, latterHalf string, clr color.Color) bool {
+func parseSiameseFlag(flagSet *flagSet, firstHalf, latterHalf string, clr color.Color) (*flag, bool) {
 	// NOTE: fl must be not a boolean
 	key, val := firstHalf, latterHalf
 	if fl, ok := flagSet.flagMap[key]; ok && !fl.isBoolean() {
-		if flagSet.err = fl.set(key, val, clr); flagSet.err != nil {
-			return false
+		if fl.isCounter() {
+			return nil, false
 		}
-		return true
+		if flagSet.err = fl.set(key, val, clr); flagSet.err != nil {
+			return fl, false
+		}
+		return fl, true
 	}
-	return false
+	return nil, false
 }

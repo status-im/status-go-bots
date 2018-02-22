@@ -21,7 +21,7 @@ type flag struct {
 	// isAssigned indicates whether the flag is set(contains default value)
 	isAssigned bool
 
-	// isAssigned indicates whether the flag is set
+	// isSet indicates whether the flag is set
 	isSet bool
 
 	// tag properties
@@ -45,36 +45,67 @@ func newFlag(field reflect.StructField, value reflect.Value, tag *tagProperty, c
 		return nil, fmt.Errorf("field %s can not set", clr.Bold(fl.field.Name))
 	}
 	fl.tag = *tag
+	if fl.isPtr() && fl.value.IsNil() {
+		fl.value.Set(reflect.New(fl.field.Type.Elem()))
+	}
+	isSliceDecoder := fl.value.Type().Implements(reflect.TypeOf((*SliceDecoder)(nil)).Elem())
+	if !isSliceDecoder && fl.value.CanAddr() {
+		isSliceDecoder = fl.value.Addr().Type().Implements(reflect.TypeOf((*SliceDecoder)(nil)).Elem())
+	}
 	fl.isNeedDelaySet = fl.tag.parserCreator != nil ||
-		(fl.field.Type.Kind() != reflect.Slice && fl.field.Type.Kind() != reflect.Map)
+		(fl.field.Type.Kind() != reflect.Slice && fl.field.Type.Kind() != reflect.Map && !isSliceDecoder)
 	err = fl.init(clr, dontSetValue)
 	return
 }
 
 func (fl *flag) init(clr color.Color, dontSetValue bool) error {
-	isNumber := fl.isInteger() || fl.isFloat()
-	dft, err := parseExpression(fl.tag.defaultValue, isNumber)
+	var (
+		isNumber  = fl.isInteger() || fl.isFloat()
+		isDecoder = fl.value.Type().Implements(reflect.TypeOf((*Decoder)(nil)).Elem())
+		dft       string
+		err       error
+	)
+	if !isDecoder && fl.value.CanAddr() {
+		isDecoder = fl.value.Addr().Type().Implements(reflect.TypeOf((*Decoder)(nil)).Elem())
+	}
+	dft, err = parseExpression(fl.tag.dft, isNumber)
 	if err != nil {
 		return err
 	}
-	if isNumber {
+	if isNumber && !isDecoder {
 		v, err := expr.Eval(dft, nil, nil)
-		if err != nil {
-			return err
-		}
-		if fl.isInteger() {
-			dft = fmt.Sprintf("%d", int64(v))
-		} else if fl.isFloat() {
-			dft = fmt.Sprintf("%f", float64(v))
+		if err == nil {
+			if fl.isInteger() {
+				dft = fmt.Sprintf("%d", v.Int())
+			} else if fl.isFloat() {
+				dft = fmt.Sprintf("%f", v.Float())
+			}
 		}
 	}
-	if !dontSetValue && fl.tag.defaultValue != "" && dft != "" {
-		zero := reflect.Zero(fl.field.Type)
-		if reflect.DeepEqual(zero.Interface(), fl.value.Interface()) {
+	if !dontSetValue && fl.tag.dft != "" && dft != "" {
+		if fl.isPtr() || isDecoder || isEmpty(fl.value) {
 			return fl.setDefault(dft, clr)
 		}
 	}
 	return nil
+}
+
+func isEmpty(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Interface, reflect.Ptr:
+		return v.IsNil()
+	}
+	return false
 }
 
 func isWordByte(b byte) bool {
@@ -174,6 +205,14 @@ func (fl *flag) isInteger() bool {
 	return false
 }
 
+func (fl *flag) isSlice() bool {
+	return fl.field.Type.Kind() == reflect.Slice
+}
+
+func (fl *flag) isMap() bool {
+	return fl.field.Type.Kind() == reflect.Map
+}
+
 func (fl *flag) isFloat() bool {
 	kind := fl.field.Type.Kind()
 	return kind == reflect.Float32 || kind == reflect.Float64
@@ -181,6 +220,10 @@ func (fl *flag) isFloat() bool {
 
 func (fl *flag) isString() bool {
 	return fl.field.Type.Kind() == reflect.String
+}
+
+func (fl *flag) isPtr() bool {
+	return fl.field.Type.Kind() == reflect.Ptr
 }
 
 func (fl *flag) getBool() bool {
@@ -210,11 +253,42 @@ func (fl *flag) set(actualFlagName, s string, clr color.Color) error {
 	return setWithProperType(fl, fl.field.Type, fl.value, s, clr, false)
 }
 
+func (fl *flag) counterIncr(s string, clr color.Color) error {
+	return setWithProperType(fl, fl.field.Type, fl.value, s, clr, false)
+}
+
+func (fl *flag) isCounter() bool {
+	if decoder := tryGetDecoder(fl.value.Type().Kind(), fl.value); decoder != nil {
+		if _, ok := decoder.(CounterDecoder); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (fl *flag) setWithNoDelay(actualFlagName, s string, clr color.Color) error {
 	fl.isSet = true
 	fl.isAssigned = true
 	fl.actualFlagName = actualFlagName
 	return setWithProperType(fl, fl.field.Type, fl.value, s, clr, false)
+}
+
+func tryGetDecoder(kind reflect.Kind, val reflect.Value) Decoder {
+	if val.CanInterface() {
+		var addrVal = val
+		if kind != reflect.Ptr && val.CanAddr() {
+			addrVal = val.Addr()
+		}
+		// try Decoder
+		if addrVal.CanInterface() {
+			if i := addrVal.Interface(); i != nil {
+				if decoder, ok := i.(Decoder); ok {
+					return decoder
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func setWithProperType(fl *flag, typ reflect.Type, val reflect.Value, s string, clr color.Color, isSubField bool) error {
@@ -226,6 +300,10 @@ func setWithProperType(fl *flag, typ reflect.Type, val reflect.Value, s string, 
 			val = val.Addr()
 		}
 		return fl.tag.parserCreator(val.Interface()).Parse(s)
+	}
+
+	if decoder := tryGetDecoder(kind, val); decoder != nil {
+		return decoder.Decode(s)
 	}
 
 	switch kind {
@@ -274,7 +352,7 @@ func setWithProperType(fl *flag, typ reflect.Type, val reflect.Value, s string, 
 
 	case reflect.Slice:
 		if isSubField {
-			return fmt.Errorf("unsupported type %s as sub field", kind.String())
+			return fmt.Errorf("unsupported type %s as a sub field", kind.String())
 		}
 		sliceOf := typ.Elem()
 		if val.IsNil() {
@@ -296,7 +374,7 @@ func setWithProperType(fl *flag, typ reflect.Type, val reflect.Value, s string, 
 
 	case reflect.Map:
 		if isSubField {
-			return fmt.Errorf("unsupported type %s as sub field", kind.String())
+			return fmt.Errorf("unsupported type %s as a sub field", kind.String())
 		}
 		keyString, valString, err := splitKeyVal(s, fl.tag.sep)
 		if err != nil {
@@ -317,17 +395,6 @@ func setWithProperType(fl *flag, typ reflect.Type, val reflect.Value, s string, 
 		val.SetMapIndex(k.Elem(), v.Elem())
 
 	default:
-		if val.CanInterface() {
-			if kind != reflect.Ptr && val.CanAddr() {
-				val = val.Addr()
-			}
-			// try Decoder
-			if i := val.Interface(); i != nil {
-				if decoder, ok := i.(Decoder); ok {
-					return decoder.Decode(s)
-				}
-			}
-		}
 		return fmt.Errorf("unsupported type: %s", kind.String())
 	}
 	return nil
@@ -393,7 +460,7 @@ func getBool(s string, clr color.Color) (bool, error) {
 	}
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		return false, fmt.Errorf("`%s` couldn't converted to a %s value", s, clr.Bold("bool"))
+		return false, fmt.Errorf("`%s' couldn't converted to a %s", s, clr.Bold("bool"))
 	}
 	return i != 0, nil
 }
@@ -401,7 +468,7 @@ func getBool(s string, clr color.Color) (bool, error) {
 func getInt(s string, clr color.Color) (int64, error) {
 	i, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("`%s` couldn't converted to an %s value", s, clr.Bold("int"))
+		return 0, fmt.Errorf("`%s' couldn't converted to an %s", s, clr.Bold("int"))
 	}
 	return i, nil
 }
@@ -409,7 +476,7 @@ func getInt(s string, clr color.Color) (int64, error) {
 func getUint(s string, clr color.Color) (uint64, error) {
 	i, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("`%s` couldn't converted to an %s value", s, clr.Bold("uint"))
+		return 0, fmt.Errorf("`%s' couldn't converted to an %s", s, clr.Bold("uint"))
 	}
 	return i, nil
 }
@@ -417,7 +484,7 @@ func getUint(s string, clr color.Color) (uint64, error) {
 func getFloat(s string, clr color.Color) (float64, error) {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return 0, fmt.Errorf("`%s` couldn't converted to a %s value", s, clr.Bold("float"))
+		return 0, fmt.Errorf("`%s' couldn't converted to a %s", s, clr.Bold("float"))
 	}
 	return f, nil
 }

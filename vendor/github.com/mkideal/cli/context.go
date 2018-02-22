@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ type (
 	Context struct {
 		router     []string
 		path       string
-		argv       interface{}
+		argvList   []interface{}
 		nativeArgs []string
 		flagSet    *flagSet
 		command    *Command
@@ -39,19 +40,19 @@ type (
 	}
 )
 
-func newContext(path string, router, args []string, argv interface{}, clr color.Color) (*Context, error) {
+func newContext(path string, router, args []string, argvList []interface{}, clr color.Color) (*Context, error) {
 	ctx := &Context{
 		path:       path,
 		router:     router,
-		argv:       argv,
+		argvList:   argvList,
 		nativeArgs: args,
 		color:      clr,
 		flagSet:    newFlagSet(),
 	}
-	if argv != nil {
-		ctx.flagSet = parseArgv(args, argv, ctx.color)
+	if !isEmptyArgvList(argvList) {
+		ctx.flagSet = parseArgvList(args, argvList, ctx.color)
 		if ctx.flagSet.err != nil {
-			return nil, ctx.flagSet.err
+			return ctx, ctx.flagSet.err
 		}
 	}
 	return ctx, nil
@@ -86,9 +87,60 @@ func (ctx *Context) NArg() int {
 	return len(ctx.flagSet.args)
 }
 
+// NOpt returns num of options
+func (ctx *Context) NOpt() int {
+	if ctx.flagSet == nil || ctx.flagSet.flagSlice == nil {
+		return 0
+	}
+	n := 0
+	for _, fl := range ctx.flagSet.flagSlice {
+		if fl.isSet {
+			n++
+		}
+	}
+	return n
+}
+
 // Argv returns parsed args object
 func (ctx *Context) Argv() interface{} {
-	return ctx.argv
+	if ctx.argvList == nil || len(ctx.argvList) == 0 {
+		return nil
+	}
+	return ctx.argvList[0]
+}
+
+func (ctx *Context) RootArgv() interface{} {
+	if isEmptyArgvList(ctx.argvList) {
+		return nil
+	}
+	index := len(ctx.argvList) - 1
+	return ctx.argvList[index]
+}
+
+func (ctx *Context) GetArgvList(curr interface{}, parents ...interface{}) error {
+	if isEmptyArgvList(ctx.argvList) {
+		return argvError{isEmpty: true}
+	}
+	for i, argv := range append([]interface{}{curr}, parents...) {
+		if argv == nil {
+			continue
+		}
+		if i >= len(ctx.argvList) {
+			return argvError{isOutOfRange: true}
+		}
+		if ctx.argvList[i] == nil {
+			return argvError{ith: i, msg: "source is nil"}
+		}
+
+		buf := bytes.NewBufferString("")
+		if err := json.NewEncoder(buf).Encode(ctx.argvList[i]); err != nil {
+			return err
+		}
+		if err := json.NewDecoder(buf).Decode(argv); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // IsSet determins whether `flag` is set
@@ -156,7 +208,7 @@ func (ctx *Context) String(format string, args ...interface{}) *Context {
 func (ctx *Context) JSON(obj interface{}) *Context {
 	data, err := json.Marshal(obj)
 	if err == nil {
-		fmt.Fprintf(ctx.Writer(), string(data))
+		fmt.Fprint(ctx.Writer(), string(data))
 	}
 	return ctx
 }
@@ -170,7 +222,7 @@ func (ctx *Context) JSONln(obj interface{}) *Context {
 func (ctx *Context) JSONIndent(obj interface{}, prefix, indent string) *Context {
 	data, err := json.MarshalIndent(obj, prefix, indent)
 	if err == nil {
-		fmt.Fprintf(ctx.Writer(), string(data))
+		fmt.Fprint(ctx.Writer(), string(data))
 	}
 	return ctx
 }

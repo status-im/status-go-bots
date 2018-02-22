@@ -52,13 +52,13 @@ func (fs *flagSet) readPrompt(w io.Writer, clr color.Color) {
 			if fs.err == nil {
 				fl.setWithNoDelay("", fmt.Sprintf("%v", yes), clr)
 			}
-		} else if fl.tag.defaultValue != "" {
-			data, fs.err = prompt.BasicDefault(prefix, fl.tag.defaultValue)
+		} else if fl.tag.dft != "" {
+			data, fs.err = prompt.BasicDefault(prefix, fl.tag.dft)
 			if fs.err == nil {
 				fl.setWithNoDelay("", data, clr)
 			}
 		} else {
-			data, fs.err = prompt.Basic(prefix, fl.tag.required)
+			data, fs.err = prompt.Basic(prefix, fl.tag.isRequired)
 			if fs.err == nil {
 				fl.setWithNoDelay("", data, clr)
 			}
@@ -101,6 +101,8 @@ const (
 	NormalStyle UsageStyle = iota
 	// ManualStyle : up-down
 	ManualStyle
+	// DenseManualStyle : up-down, too
+	DenseManualStyle
 )
 
 var defaultStyle = NormalStyle
@@ -142,8 +144,8 @@ func (fs flagSlice) String(clr color.Color) string {
 			lenLong = l
 		}
 		lenDft := 0
-		if tag.defaultValue != "" {
-			lenDft = len(tag.defaultValue) + 3 // 3=len("[=]")
+		if tag.dft != "" {
+			lenDft = len(tag.dft) + 3 // 3=len("[=]")
 		}
 		l += lenDft
 		if tag.name != "" {
@@ -165,18 +167,18 @@ func (fs flagSlice) String(clr color.Color) string {
 			nameStr     = ""
 			usagePrefix = " "
 		)
-		if tag.defaultValue != "" {
-			defaultStr = fmt.Sprintf("[=%s]", tag.defaultValue)
+		if tag.dft != "" {
+			defaultStr = fmt.Sprintf("[=%s]", tag.dft)
 		}
 		if tag.name != "" {
 			nameStr = "=" + tag.name
 		}
-		if tag.required {
+		if tag.isRequired {
 			usagePrefix = clr.Red("*")
 		}
 		usage := usagePrefix + tag.usage
 
-		spaceSize := lenSep + lenNameAndDefaultAndLong
+		spaceSize := lenNameAndDefaultAndLong
 		spaceSize -= len(nameStr) + len(defaultStr) + len(longStr)
 
 		if defaultStr != "" {
@@ -208,7 +210,7 @@ func fillSpaces(s string, spaceSize int) string {
 }
 
 func (fs flagSlice) StringWithStyle(clr color.Color, style UsageStyle) string {
-	if style != ManualStyle {
+	if style != ManualStyle && style != DenseManualStyle {
 		return fs.String(clr)
 	}
 
@@ -224,17 +226,19 @@ func (fs flagSlice) StringWithStyle(clr color.Color, style UsageStyle) string {
 		if fl.tag.name != "" {
 			buf.WriteString("=" + clr.Bold(fl.tag.name))
 		}
-		if fl.tag.defaultValue != "" {
-			buf.WriteString(clr.Grey(fmt.Sprintf("[=%s]", fl.tag.defaultValue)))
+		if fl.tag.dft != "" {
+			buf.WriteString(clr.Grey(fmt.Sprintf("[=%s]", fl.tag.dft)))
 		}
 		buf.WriteString("\n")
 		buf.WriteString(linePrefix)
 		buf.WriteString("    ")
-		if fl.tag.required {
+		if fl.tag.isRequired {
 			buf.WriteString(clr.Red("*"))
 		}
 		buf.WriteString(fl.tag.usage)
-		buf.WriteString("\n")
+		if style != DenseManualStyle {
+			buf.WriteString("\n")
+		}
 	}
 	return buf.String()
 }

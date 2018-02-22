@@ -16,7 +16,7 @@ import (
 	"github.com/mkideal/pkg/debug"
 )
 
-var commandNameRegexp = regexp.MustCompile("[a-zA-Z\\-_0-9]+")
+var commandNameRegexp = regexp.MustCompile("^[a-zA-Z_0-9][a-zA-Z_\\-0-9]*$")
 
 // IsValidCommandName validates name of command
 func IsValidCommandName(commandName string) bool {
@@ -30,19 +30,36 @@ type (
 	// ArgvFunc ...
 	ArgvFunc func() interface{}
 
+	// NumCheckFunc represents function type which used to check num of args
+	NumCheckFunc func(n int) bool
+
+	// UsageFunc represents custom function of usage
+	UsageFunc func() string
+)
+
+func ExactN(num int) NumCheckFunc  { return func(n int) bool { return n == num } }
+func AtLeast(num int) NumCheckFunc { return func(n int) bool { return n >= num } }
+func AtMost(num int) NumCheckFunc  { return func(n int) bool { return n <= num } }
+
+type (
 	// Command is the top-level instance in command-line app
 	Command struct {
-		Name    string      // Command name
-		Aliases []string    // Command aliases name
-		Desc    string      // Command abstract
-		Text    string      // Command detail description
-		Fn      CommandFunc // Command handler
-		Argv    ArgvFunc    // Command argument factory function
+		Name    string   // Command name
+		Aliases []string // Command aliases name
+		Desc    string   // Command abstract
+		Text    string   // Command detail description
 
 		CanSubRoute bool
-		NeedArgs    bool
 		NoHook      bool
 		NoHTTP      bool
+		Global      bool
+
+		// functions
+		Fn        CommandFunc // Command handler
+		UsageFn   UsageFunc   // Custom usage function
+		Argv      ArgvFunc    // Command argument factory function
+		NumArg    NumCheckFunc
+		NumOption NumCheckFunc
 
 		HTTPRouters []string
 		HTTPMethods []string
@@ -79,9 +96,6 @@ type (
 func (cmd *Command) Register(child *Command) *Command {
 	if child == nil {
 		debug.Panicf("command `%s` try register a nil command", cmd.Name)
-	}
-	if child.Name == "" {
-		debug.Panicf("command `%s` try register a empty command", cmd.Name)
 	}
 	if !IsValidCommandName(child.Name) {
 		debug.Panicf("illegal command name `%s`", cmd.Name)
@@ -175,12 +189,6 @@ func (cmd *Command) RunWith(args []string, writer io.Writer, resp http.ResponseW
 		return nil
 	}
 
-	if argv := ctx.Argv(); argv != nil {
-		debug.Debugf("command %s ready exec with argv %v", ctx.command.Name, argv)
-	} else {
-		debug.Debugf("command %s ready exec", ctx.command.Name)
-	}
-
 	if ctx.command.NoHook {
 		return ctx.command.Fn(ctx)
 	}
@@ -205,6 +213,37 @@ func (cmd *Command) RunWith(args []string, writer io.Writer, resp http.ResponseW
 	return nil
 }
 
+func isEmptyArgvList(argvList []interface{}) bool {
+	if argvList == nil {
+		return true
+	}
+	for _, argv := range argvList {
+		if argv != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (cmd *Command) argvList() []interface{} {
+	argvList := make([]interface{}, 0, 1)
+	if cmd.Argv != nil {
+		argvList = append(argvList, cmd.Argv())
+	} else {
+		argvList = append(argvList, nil)
+	}
+	next := cmd.parent
+	for next != nil {
+		if next.Argv != nil && next.Global {
+			argvList = append(argvList, next.Argv())
+		} else {
+			argvList = append(argvList, nil)
+		}
+		next = next.parent
+	}
+	return argvList
+}
+
 func (cmd *Command) prepare(clr color.Color, args []string, writer io.Writer, resp http.ResponseWriter, httpMethods ...string) (ctx *Context, suggestion string, err error) {
 	// split args
 	router := []string{}
@@ -218,7 +257,7 @@ func (cmd *Command) prepare(clr color.Color, args []string, writer io.Writer, re
 	child, end := cmd.SubRoute(router)
 
 	// if route fail
-	if child == nil || (!child.CanSubRoute && end != len(router)) {
+	if !child.CanSubRoute && end != len(router) {
 		suggestions := cmd.Suggestions(path)
 		buff := bytes.NewBufferString("")
 		if suggestions != nil && len(suggestions) > 0 {
@@ -255,33 +294,34 @@ func (cmd *Command) prepare(clr color.Color, args []string, writer io.Writer, re
 		return
 	}
 
-	// create argv
-	var argv interface{}
-	if child.Argv != nil {
-		argv = child.Argv()
-	}
+	// create argvList
+	argvList := child.argvList()
 
 	// create Context
-	ctx, err = newContext(path, router[:end], args[end:], argv, clr)
-	if err != nil {
-		return
-	}
+	path = child.Path()
+	ctx, err = newContext(path, router[:end], args[end:], argvList, clr)
 	ctx.command = child
 	ctx.writer = writer
-	ctx.HTTPResponse = resp
-
-	if len(ctx.NativeArgs()) == 0 && ctx.command.NeedArgs {
-		ctx.WriteUsage()
-		err = ExitError
-		return
-	}
-
-	// auto help
-	if argv != nil {
-		if helper, ok := argv.(AutoHelper); ok && helper.AutoHelp() {
+	if !ctx.flagSet.hasForce {
+		if !child.checkNumOption(ctx.NOpt()) || !ctx.command.checkNumArg(ctx.NArg()) {
 			ctx.WriteUsage()
 			err = ExitError
 			return
+		}
+	}
+	if err != nil {
+		return
+	}
+	ctx.HTTPResponse = resp
+
+	// auto help
+	for _, argv := range argvList {
+		if argv != nil {
+			if helper, ok := argv.(AutoHelper); ok && helper.AutoHelp() {
+				ctx.WriteUsage()
+				err = ExitError
+				return
+			}
 		}
 	}
 
@@ -290,12 +330,16 @@ func (cmd *Command) prepare(clr color.Color, args []string, writer io.Writer, re
 		return
 	}
 
-	// validate argv if argv implements interface Validator
-	if argv != nil && !ctx.flagSet.hasForce {
-		if validator, ok := argv.(Validator); ok {
-			err = validator.Validate(ctx)
-			if err != nil {
-				return
+	if !ctx.flagSet.hasForce {
+		for _, argv := range argvList {
+			// validate argv if argv implements interface Validator
+			if argv != nil {
+				if validator, ok := argv.(Validator); ok {
+					err = validator.Validate(ctx)
+					if err != nil {
+						return
+					}
+				}
 			}
 		}
 	}
@@ -303,14 +347,28 @@ func (cmd *Command) prepare(clr color.Color, args []string, writer io.Writer, re
 	return
 }
 
+func (cmd *Command) checkNumArg(num int) bool {
+	return cmd.NumArg == nil || cmd.NumArg(num)
+}
+
+func (cmd *Command) checkNumOption(num int) bool {
+	return cmd.NumOption == nil || cmd.NumOption(num)
+}
+
 // Usage returns the usage string of command
 func (cmd *Command) Usage(ctx *Context) string {
-	style := GetUsageStyle()
-	clr := color.Color{}
-	clr.Disable()
-	if ctx != nil {
-		clr = ctx.color
+	if cmd.UsageFn != nil {
+		return cmd.UsageFn()
 	}
+	return cmd.defaultUsageFn(ctx)
+}
+
+func (cmd *Command) defaultUsageFn(ctx *Context) string {
+	var (
+		style = GetUsageStyle()
+		clr   = *(ctx.Color())
+	)
+
 	// get usage form cache
 	cmd.locker.Lock()
 	tmpUsage := cmd.usage
@@ -320,6 +378,7 @@ func (cmd *Command) Usage(ctx *Context) string {
 		debug.Debugf("get usage of command %s from cache", clr.Bold(cmd.Name))
 		return tmpUsage
 	}
+
 	buff := bytes.NewBufferString("")
 	if cmd.Desc != "" {
 		fmt.Fprintf(buff, "%s\n\n", cmd.Desc)
@@ -327,14 +386,16 @@ func (cmd *Command) Usage(ctx *Context) string {
 	if cmd.Text != "" {
 		fmt.Fprintf(buff, "%s\n\n", cmd.Text)
 	}
-	if cmd.Argv != nil {
-		fmt.Fprintf(buff, "%s:\n\n%s", clr.Bold("Options"), usage(cmd.Argv(), clr, style))
+	argvList := cmd.argvList()
+	isEmpty := isEmptyArgvList(argvList)
+	if !isEmpty {
+		fmt.Fprintf(buff, "%s:\n\n%s", clr.Bold("Options"), usage(argvList, clr, style))
 	}
 	if cmd.children != nil && len(cmd.children) > 0 {
-		if cmd.Argv != nil {
+		if !isEmpty {
 			buff.WriteByte('\n')
 		}
-		fmt.Fprintf(buff, "%s:\n%v", clr.Bold("Commands"), cmd.ChildrenDescriptions("  ", "   "))
+		fmt.Fprintf(buff, "%s:\n\n%v", clr.Bold("Commands"), cmd.ChildrenDescriptions("  ", "   "))
 	}
 	tmpUsage = buff.String()
 	cmd.locker.Lock()

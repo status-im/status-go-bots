@@ -231,10 +231,10 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
   name = "github.com/mkideal/cli"
   packages = ["."]
-  revision = "0bc4738ef26827a45d3b50394d84d283f733ad63"
-  version = "v0.0.1"
+  revision = "a9c1104566927924fdb041d198f05617492913f9"
 
 [[projects]]
   branch = "master"
@@ -481,6 +481,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fbf6e3b93f4ea4939d4233a1030c8e8f9dff75f883d8e1362f2e5cb7c16ac986"
+  inputs-digest = "60de5c02bdb44bd7dab97643f7c8f730b5f496c7dcacaa68a6667aa909d0ac55"
   solver-name = "gps-cdcl"
   solver-version = 1
