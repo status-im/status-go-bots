@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"regexp"
 	"strconv"
 	"time"
@@ -51,6 +52,11 @@ func MessageFromPayload(payload string) StatusMessage {
 	message := unrawrChatMessage(payload)
 
 	r := messageRegex.FindStringSubmatch(message)
+
+	if len(r) < len(messageRegex.SubexpNames()) {
+		log.Println("Could not unwrap message: ", message)
+		return StatusMessage{}
+	}
 
 	dict := make(map[string]string)
 	for idx, name := range messageRegex.SubexpNames() {

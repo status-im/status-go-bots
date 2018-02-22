@@ -61,7 +61,9 @@ func (ch *StatusChannel) ReadMessages() (result []StatusMessage) {
 		for _, u := range vv {
 			payload := u.(map[string]interface{})["payload"]
 			message := MessageFromPayload(payload.(string))
-			result = append(result, message)
+			if len(message.ID) > 0 {
+				result = append(result, message)
+			}
 		}
 	default:
 		log.Println(v, "is of a type I don't know how to handle")
