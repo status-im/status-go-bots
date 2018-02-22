@@ -26,7 +26,7 @@ func Quickstart(conf Config, repeat time.Duration, f func(ch *StatusChannel)) *n
 		log.Fatalf("Getting node failed: %v", err)
 	}
 
-	SignupOrLogin(nodeManager, conf.Password).Join(conf.Channel, conf.Nickname).RepeatEvery(repeat, f)
+	SignupOrLogin(nodeManager, conf.Password()).Join(conf.Channel, conf.Nickname).RepeatEvery(repeat, f)
 
 	return node
 }
