@@ -37,7 +37,7 @@ func NewMessagesStore(maxCount int) *messagesStore {
 	// Load data
 	messages := messagesFromIterator(db.NewIterator(nil, nil))
 	sort.Sort(ByTimestamp(messages))
-	log.Println("loaded messages", len(messages), "\n\nV", messages)
+	log.Println("loaded messages", len(messages))
 
 	return &messagesStore{db, messages, maxCount}
 }

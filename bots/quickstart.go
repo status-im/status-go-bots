@@ -8,12 +8,6 @@ import (
 	sn "github.com/status-im/status-go/geth/node"
 )
 
-type Config struct {
-	Password string
-	Channel  string
-	Nickname string
-}
-
 func Quickstart(conf Config, repeat time.Duration, f func(ch *StatusChannel)) *node.Node {
 	config, err := NodeConfig()
 	if err != nil {
