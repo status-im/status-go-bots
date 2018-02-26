@@ -2,7 +2,6 @@ package bots
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/status-im/status-go/geth/params"
 )
@@ -86,7 +85,7 @@ func NodeConfig() (*params.NodeConfig, error) {
     }
 }`
 
-	cwd, _ := os.Getwd()
+	cwd := "/tmp/sg_bots/node"
 
 	config := fmt.Sprintf(configFormat, cwd, cwd, cwd, cwd)
 	return params.LoadNodeConfig(config)

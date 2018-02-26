@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"sort"
 
 	"github.com/mandrigin/status-go-bots/bots"
@@ -19,7 +18,7 @@ type ByTimestamp []bots.StatusMessage
 
 func (a ByTimestamp) Len() int           { return len(a) }
 func (a ByTimestamp) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByTimestamp) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
+func (a ByTimestamp) Less(i, j int) bool { return a[i].Timestamp > a[j].Timestamp }
 
 type messagesStore struct {
 	db       *leveldb.DB
@@ -28,8 +27,7 @@ type messagesStore struct {
 }
 
 func NewMessagesStore(maxCount int) *messagesStore {
-	cwd, _ := os.Getwd()
-	db, err := leveldb.OpenFile(cwd+"/messages_store", nil)
+	db, err := leveldb.OpenFile("/tmp/sg_bots/sg_spectator/messages_store", nil)
 	if err != nil {
 		log.Fatal("can't open levelDB file. ERR: %v", err)
 	}

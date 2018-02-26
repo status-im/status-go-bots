@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/dustin/go-humanize"
 )
 
 const (
@@ -34,6 +36,11 @@ func NewStatusMessage(from, text, channel string) StatusMessage {
 		ChannelName: channel,
 		Timestamp:   time.Now().Unix() * 1000,
 	}
+}
+
+func (m StatusMessage) TimeString() string {
+	t := time.Unix(m.Timestamp/1000, 0)
+	return humanize.RelTime(t, time.Now(), "earlier", "later")
 }
 
 func (m StatusMessage) ToPayload() string {

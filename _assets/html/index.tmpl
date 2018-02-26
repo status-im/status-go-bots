@@ -1,0 +1,85 @@
+<html>
+    <!--
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	Text        string `json:"text"`
+	ChannelName string `json:"channel"`
+	Timestamp   int64  `json:"ts"`
+	Raw         string `json:"-"`
+
+    -->
+<style type="text/css">
+
+html {
+    font-family: PostGrotesk-Medium, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+}
+
+body {
+    margin: 0px;
+    background-color: #EEF2F5;
+}
+
+h1 {
+    text-align: center;
+    color: white;
+    font-weight: bolder;
+}
+
+.content {
+    max-width: 600px;
+    margin: auto;
+}
+
+
+.header {
+    background-color: #648FCE;
+    line-height: 5rem;
+}
+
+.chat {
+    width: 100%;
+    border-collapse: separate;
+}
+.message {
+    background-color: white;
+    border-radius: 10px;
+    padding: 10px;
+    margin: 10px 0px;
+}
+
+.cell {
+    width: 100%;
+}
+
+.time {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    text-align: right;
+}
+
+.from {
+    font-size: 0.8rem;
+    color: #70808D;
+    padding-bottom: 3px;
+}
+
+</style>
+
+    <body>
+        <div class="content">
+            <div class="header">
+                <h1>#status</h1>
+            </div>
+            <div class="chat">
+            {{range .Messages}}
+                <div class="message">
+                    <div class="cell from">{{ .From }}</div>
+                    <div class="cell text">{{ .Text }}</div>
+                    <div class="cell time">{{ .TimeString }}</div>
+                </div>
+            {{end}}
+            </div>
+        </div>
+    </body>
+</html>
