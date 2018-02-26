@@ -46,6 +46,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/dustin/go-humanize"
+  packages = ["."]
+  revision = "bb3d318650d48840a39aa21a027c6630e198e626"
+
+[[projects]]
+  branch = "master"
   name = "github.com/edsrzf/mmap-go"
   packages = ["."]
   revision = "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
@@ -481,6 +487,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "60de5c02bdb44bd7dab97643f7c8f730b5f496c7dcacaa68a6667aa909d0ac55"
+  inputs-digest = "e09463dc940256a43b9438aecfef8d2205e5a6aec7ce203deea226dbe3ed67b9"
   solver-name = "gps-cdcl"
   solver-version = 1
