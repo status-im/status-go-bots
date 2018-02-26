@@ -85,7 +85,7 @@ func NodeConfig() (*params.NodeConfig, error) {
     }
 }`
 
-	cwd := "/tmp/sg_bots/node"
+	cwd := "/data/sg_bots/node"
 
 	config := fmt.Sprintf(configFormat, cwd, cwd, cwd, cwd)
 	return params.LoadNodeConfig(config)

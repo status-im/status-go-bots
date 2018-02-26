@@ -17,7 +17,11 @@ RUN apk add --no-cache ca-certificates bash
 COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/pinger     /usr/local/bin/
 COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/chanreader /usr/local/bin/
 
-VOLUME ["/tmp/sg_bots"]
+WORKDIR /etc/gs-bots/
+COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/_assets   ./_assets
+
+RUN mkdir -p /data/sg_bots
+VOLUME "/data/sg_bots"
 
 # 30304 is used for Discovery v5
 EXPOSE 8080 8545 30303 30303/udp 30304/udp

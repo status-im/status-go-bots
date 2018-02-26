@@ -27,7 +27,7 @@ type messagesStore struct {
 }
 
 func NewMessagesStore(maxCount int) *messagesStore {
-	db, err := leveldb.OpenFile("/tmp/sg_bots/sg_spectator/messages_store", nil)
+	db, err := leveldb.OpenFile("/data/sg_bots/sg_spectator/messages_store", nil)
 	if err != nil {
 		log.Fatal("can't open levelDB file. ERR: %v", err)
 	}
