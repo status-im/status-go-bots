@@ -39,7 +39,8 @@ func main() {
 		})
 		r.GET("/html", func(c *gin.Context) {
 			c.HTML(http.StatusOK, "index.tmpl", gin.H{
-				"Messages": messages.Messages(conf.Channel),
+				"ChannelName": conf.Channel,
+				"Messages":    messages.Messages(conf.Channel),
 			})
 		})
 		r.Run() // listen and serve on 0.0.0.0:8080
