@@ -19,13 +19,11 @@ package whisperv6
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"crypto/sha256"
 	mrand "math/rand"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"golang.org/x/crypto/pbkdf2"
 )
 
 func TestWhisperBasic(t *testing.T) {
@@ -80,8 +78,16 @@ func TestWhisperBasic(t *testing.T) {
 		t.Fatalf("failed w.Messages.")
 	}
 
-	derived := pbkdf2.Key([]byte(peerID), nil, 65356, aesKeyLength, sha256.New)
-	if !validateDataIntegrity(derived, aesKeyLength) {
+	var derived []byte
+	ver := uint64(0xDEADBEEF)
+	if _, err := deriveKeyMaterial(peerID, ver); err != unknownVersionError(ver) {
+		t.Fatalf("failed deriveKeyMaterial with param = %v: %s.", peerID, err)
+	}
+	derived, err = deriveKeyMaterial(peerID, 0)
+	if err != nil {
+		t.Fatalf("failed second deriveKeyMaterial with param = %v: %s.", peerID, err)
+	}
+	if !validateSymmetricKey(derived) {
 		t.Fatalf("failed validateSymmetricKey with param = %v.", derived)
 	}
 	if containsOnlyZeros(derived) {
@@ -448,11 +454,23 @@ func TestWhisperSymKeyManagement(t *testing.T) {
 	if !w.HasSymKey(id2) {
 		t.Fatalf("HasSymKey(id2) failed.")
 	}
-	if !validateDataIntegrity(k2, aesKeyLength) {
-		t.Fatalf("key validation failed.")
+	if k1 == nil {
+		t.Fatalf("k1 does not exist.")
+	}
+	if k2 == nil {
+		t.Fatalf("k2 does not exist.")
 	}
 	if !bytes.Equal(k1, k2) {
 		t.Fatalf("k1 != k2.")
+	}
+	if len(k1) != aesKeyLength {
+		t.Fatalf("wrong length of k1.")
+	}
+	if len(k2) != aesKeyLength {
+		t.Fatalf("wrong length of k2.")
+	}
+	if !validateSymmetricKey(k2) {
+		t.Fatalf("key validation failed.")
 	}
 }
 
@@ -460,8 +478,8 @@ func TestExpiry(t *testing.T) {
 	InitSingleTest()
 
 	w := New(&DefaultConfig)
-	w.SetMinimumPowTest(0.0000001)
-	defer w.SetMinimumPowTest(DefaultMinimumPoW)
+	w.SetMinimumPoW(0.0000001)
+	defer w.SetMinimumPoW(DefaultMinimumPoW)
 	w.Start(nil)
 	defer w.Stop()
 
@@ -517,7 +535,7 @@ func TestCustomization(t *testing.T) {
 	InitSingleTest()
 
 	w := New(&DefaultConfig)
-	defer w.SetMinimumPowTest(DefaultMinimumPoW)
+	defer w.SetMinimumPoW(DefaultMinimumPoW)
 	defer w.SetMaxMessageSize(DefaultMaxMessageSize)
 	w.Start(nil)
 	defer w.Stop()
@@ -551,7 +569,7 @@ func TestCustomization(t *testing.T) {
 		t.Fatalf("successfully sent envelope with PoW %.06f, false positive (seed %d).", env.PoW(), seed)
 	}
 
-	w.SetMinimumPowTest(smallPoW / 2)
+	w.SetMinimumPoW(smallPoW / 2)
 	err = w.Send(env)
 	if err != nil {
 		t.Fatalf("failed to send envelope with seed %d: %s.", seed, err)
@@ -613,7 +631,7 @@ func TestSymmetricSendCycle(t *testing.T) {
 	InitSingleTest()
 
 	w := New(&DefaultConfig)
-	defer w.SetMinimumPowTest(DefaultMinimumPoW)
+	defer w.SetMinimumPoW(DefaultMinimumPoW)
 	defer w.SetMaxMessageSize(DefaultMaxMessageSize)
 	w.Start(nil)
 	defer w.Stop()
@@ -702,7 +720,7 @@ func TestSymmetricSendWithoutAKey(t *testing.T) {
 	InitSingleTest()
 
 	w := New(&DefaultConfig)
-	defer w.SetMinimumPowTest(DefaultMinimumPoW)
+	defer w.SetMinimumPoW(DefaultMinimumPoW)
 	defer w.SetMaxMessageSize(DefaultMaxMessageSize)
 	w.Start(nil)
 	defer w.Stop()
@@ -770,7 +788,7 @@ func TestSymmetricSendKeyMismatch(t *testing.T) {
 	InitSingleTest()
 
 	w := New(&DefaultConfig)
-	defer w.SetMinimumPowTest(DefaultMinimumPoW)
+	defer w.SetMinimumPoW(DefaultMinimumPoW)
 	defer w.SetMaxMessageSize(DefaultMaxMessageSize)
 	w.Start(nil)
 	defer w.Stop()
@@ -829,66 +847,5 @@ func TestSymmetricSendKeyMismatch(t *testing.T) {
 	mail := filter.Retrieve()
 	if len(mail) > 0 {
 		t.Fatalf("received a message when keys weren't matching")
-	}
-}
-
-func TestBloom(t *testing.T) {
-	topic := TopicType{0, 0, 255, 6}
-	b := TopicToBloom(topic)
-	x := make([]byte, bloomFilterSize)
-	x[0] = byte(1)
-	x[32] = byte(1)
-	x[bloomFilterSize-1] = byte(128)
-	if !bloomFilterMatch(x, b) || !bloomFilterMatch(b, x) {
-		t.Fatalf("bloom filter does not match the mask")
-	}
-
-	_, err := mrand.Read(b)
-	if err != nil {
-		t.Fatalf("math rand error")
-	}
-	_, err = mrand.Read(x)
-	if err != nil {
-		t.Fatalf("math rand error")
-	}
-	if !bloomFilterMatch(b, b) {
-		t.Fatalf("bloom filter does not match self")
-	}
-	x = addBloom(x, b)
-	if !bloomFilterMatch(x, b) {
-		t.Fatalf("bloom filter does not match combined bloom")
-	}
-	if !isFullNode(nil) {
-		t.Fatalf("isFullNode did not recognize nil as full node")
-	}
-	x[17] = 254
-	if isFullNode(x) {
-		t.Fatalf("isFullNode false positive")
-	}
-	for i := 0; i < bloomFilterSize; i++ {
-		b[i] = byte(255)
-	}
-	if !isFullNode(b) {
-		t.Fatalf("isFullNode false negative")
-	}
-	if bloomFilterMatch(x, b) {
-		t.Fatalf("bloomFilterMatch false positive")
-	}
-	if !bloomFilterMatch(b, x) {
-		t.Fatalf("bloomFilterMatch false negative")
-	}
-
-	w := New(&DefaultConfig)
-	f := w.BloomFilter()
-	if f != nil {
-		t.Fatalf("wrong bloom on creation")
-	}
-	err = w.SetBloomFilter(x)
-	if err != nil {
-		t.Fatalf("failed to set bloom filter: %s", err)
-	}
-	f = w.BloomFilter()
-	if !bloomFilterMatch(f, x) || !bloomFilterMatch(x, f) {
-		t.Fatalf("retireved wrong bloom filter")
 	}
 }
