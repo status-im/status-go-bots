@@ -72,7 +72,7 @@ public class AndroidTest extends InstrumentationTestCase {
 
 			Transaction tx = new Transaction(
 				1, new Address("0x0000000000000000000000000000000000000000"),
-				new BigInt(0), 0, new BigInt(1), null); // Random empty transaction
+				new BigInt(0), new BigInt(0), new BigInt(1), null); // Random empty transaction
 			BigInt chain = new BigInt(1); // Chain identifier of the main net
 
 			// Sign a transaction with a single authorization
@@ -164,17 +164,12 @@ func TestAndroid(t *testing.T) {
 		t.Skip("command gradle not found, skipping")
 	}
 	if sdk := os.Getenv("ANDROID_HOME"); sdk == "" {
-		// Android SDK not explicitly given, try to auto-resolve
-		autopath := filepath.Join(os.Getenv("HOME"), "Android", "Sdk")
-		if _, err := os.Stat(autopath); err != nil {
-			t.Skip("ANDROID_HOME environment var not set, skipping")
-		}
-		os.Setenv("ANDROID_HOME", autopath)
+		t.Skip("ANDROID_HOME environment var not set, skipping")
 	}
 	if _, err := exec.Command("which", "gomobile").CombinedOutput(); err != nil {
 		t.Log("gomobile missing, installing it...")
-		if out, err := exec.Command("go", "get", "golang.org/x/mobile/cmd/gomobile").CombinedOutput(); err != nil {
-			t.Fatalf("install failed: %v\n%s", err, string(out))
+		if _, err := exec.Command("go", "install", "golang.org/x/mobile/cmd/gomobile").CombinedOutput(); err != nil {
+			t.Fatalf("install failed: %v", err)
 		}
 		t.Log("initializing gomobile...")
 		start := time.Now()
@@ -244,7 +239,7 @@ const gradleConfig = `buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.3'
+        classpath 'com.android.tools.build:gradle:1.5.0'
     }
 }
 allprojects {

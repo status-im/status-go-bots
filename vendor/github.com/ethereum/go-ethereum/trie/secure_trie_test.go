@@ -28,20 +28,16 @@ import (
 )
 
 func newEmptySecure() *SecureTrie {
-	diskdb, _ := ethdb.NewMemDatabase()
-	triedb := NewDatabase(diskdb)
-
-	trie, _ := NewSecure(common.Hash{}, triedb, 0)
+	db, _ := ethdb.NewMemDatabase()
+	trie, _ := NewSecure(common.Hash{}, db, 0)
 	return trie
 }
 
 // makeTestSecureTrie creates a large enough secure trie for testing.
-func makeTestSecureTrie() (*Database, *SecureTrie, map[string][]byte) {
+func makeTestSecureTrie() (ethdb.Database, *SecureTrie, map[string][]byte) {
 	// Create an empty trie
-	diskdb, _ := ethdb.NewMemDatabase()
-	triedb := NewDatabase(diskdb)
-
-	trie, _ := NewSecure(common.Hash{}, triedb, 0)
+	db, _ := ethdb.NewMemDatabase()
+	trie, _ := NewSecure(common.Hash{}, db, 0)
 
 	// Fill it with some arbitrary data
 	content := make(map[string][]byte)
@@ -62,10 +58,10 @@ func makeTestSecureTrie() (*Database, *SecureTrie, map[string][]byte) {
 			trie.Update(key, val)
 		}
 	}
-	trie.Commit(nil)
+	trie.Commit()
 
 	// Return the generated trie
-	return triedb, trie, content
+	return db, trie, content
 }
 
 func TestSecureDelete(t *testing.T) {
@@ -141,7 +137,7 @@ func TestSecureTrieConcurrency(t *testing.T) {
 					tries[index].Update(key, val)
 				}
 			}
-			tries[index].Commit(nil)
+			tries[index].Commit()
 		}(i)
 	}
 	// Wait for all threads to finish
