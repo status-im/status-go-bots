@@ -380,7 +380,7 @@
     "metrics/whisper",
     "static"
   ]
-  revision = "3d448cb71c00025c5a042a680188692d58e540b8"
+  revision = "fb38e6c58ffb12b60bfa6457a52ff715f7d0ba32"
 
 [[projects]]
   branch = "master"
