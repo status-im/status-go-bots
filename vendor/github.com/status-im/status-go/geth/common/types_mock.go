@@ -11,7 +11,7 @@ import (
 	common "github.com/ethereum/go-ethereum/common"
 	les "github.com/ethereum/go-ethereum/les"
 	node "github.com/ethereum/go-ethereum/node"
-	whisperv5 "github.com/ethereum/go-ethereum/whisper/whisperv5"
+	whisperv6 "github.com/ethereum/go-ethereum/whisper/whisperv6"
 	gomock "github.com/golang/mock/gomock"
 	otto "github.com/robertkrimen/otto"
 	params "github.com/status-im/status-go/geth/params"
@@ -166,9 +166,9 @@ func (mr *MockNodeManagerMockRecorder) LightEthereumService() *gomock.Call {
 }
 
 // WhisperService mocks base method
-func (m *MockNodeManager) WhisperService() (*whisperv5.Whisper, error) {
+func (m *MockNodeManager) WhisperService() (*whisperv6.Whisper, error) {
 	ret := m.ctrl.Call(m, "WhisperService")
-	ret0, _ := ret[0].(*whisperv5.Whisper)
+	ret0, _ := ret[0].(*whisperv6.Whisper)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -429,6 +429,19 @@ func (m *MockJailCell) Get(arg0 string) (otto.Value, error) {
 // Get indicates an expected call of Get
 func (mr *MockJailCellMockRecorder) Get(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockJailCell)(nil).Get), arg0)
+}
+
+// GetObjectValue mocks base method
+func (m *MockJailCell) GetObjectValue(arg0 otto.Value, arg1 string) (otto.Value, error) {
+	ret := m.ctrl.Call(m, "GetObjectValue", arg0, arg1)
+	ret0, _ := ret[0].(otto.Value)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetObjectValue indicates an expected call of GetObjectValue
+func (mr *MockJailCellMockRecorder) GetObjectValue(arg0, arg1 interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectValue", reflect.TypeOf((*MockJailCell)(nil).GetObjectValue), arg0, arg1)
 }
 
 // Run mocks base method

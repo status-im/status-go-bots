@@ -19,8 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/whisper/mailserver"
-	"github.com/ethereum/go-ethereum/whisper/notifications"
-	whisper "github.com/ethereum/go-ethereum/whisper/whisperv5"
+	whisper "github.com/ethereum/go-ethereum/whisper/whisperv6"
 	"github.com/status-im/status-go/geth/log"
 	"github.com/status-im/status-go/geth/params"
 	shhmetrics "github.com/status-im/status-go/metrics/whisper"
@@ -94,7 +93,6 @@ func defaultEmbeddedNodeConfig(config *params.NodeConfig) *node.Config {
 		P2P: p2p.Config{
 			NoDiscovery:      !config.Discovery,
 			DiscoveryV5:      true,
-			DiscoveryV5Addr:  ":0",
 			BootstrapNodes:   nil,
 			BootstrapNodesV5: nil,
 			ListenAddr:       config.ListenAddr,
@@ -102,13 +100,14 @@ func defaultEmbeddedNodeConfig(config *params.NodeConfig) *node.Config {
 			MaxPeers:         config.MaxPeers,
 			MaxPendingPeers:  config.MaxPendingPeers,
 		},
-		IPCPath:     makeIPCPath(config),
-		HTTPCors:    []string{"*"},
-		HTTPModules: strings.Split(config.APIModules, ","),
-		WSHost:      makeWSHost(config),
-		WSPort:      config.WSPort,
-		WSOrigins:   []string{"*"},
-		WSModules:   strings.Split(config.APIModules, ","),
+		IPCPath:          makeIPCPath(config),
+		HTTPCors:         []string{"*"},
+		HTTPModules:      strings.Split(config.APIModules, ","),
+		HTTPVirtualHosts: []string{"localhost"},
+		WSHost:           makeWSHost(config),
+		WSPort:           config.WSPort,
+		WSOrigins:        []string{"*"},
+		WSModules:        strings.Split(config.APIModules, ","),
 	}
 
 	if config.RPCEnabled {
@@ -161,9 +160,13 @@ func activateShhService(stack *node.Node, config *params.NodeConfig) error {
 	}
 
 	serviceConstructor := func(*node.ServiceContext) (node.Service, error) {
-		whisperConfig := config.WhisperConfig
-		whisperService := whisper.New(nil)
+		whisperServiceConfig := &whisper.Config{
+			MaxMessageSize:     whisper.DefaultMaxMessageSize,
+			MinimumAcceptedPOW: 0.001,
+		}
+		whisperService := whisper.New(whisperServiceConfig)
 
+		whisperConfig := config.WhisperConfig
 		// enable metrics
 		whisperService.RegisterEnvelopeTracer(&shhmetrics.EnvelopeTracer{})
 
@@ -182,13 +185,11 @@ func activateShhService(stack *node.Node, config *params.NodeConfig) error {
 			mailServer.Init(whisperService, whisperConfig.DataDir, whisperConfig.Password, whisperConfig.MinimumPoW)
 		}
 
-		// enable notification service
-		if whisperConfig.EnablePushNotification {
-			log.Info("Register PushNotification server")
-
-			var notificationServer notifications.NotificationServer
-			whisperService.RegisterNotificationServer(&notificationServer)
-			notificationServer.Init(whisperService, whisperConfig)
+		if whisperConfig.LightClient {
+			emptyBloomFilter := make([]byte, 64)
+			if err := whisperService.SetBloomFilter(emptyBloomFilter); err != nil {
+				return nil, err
+			}
 		}
 
 		return whisperService, nil
