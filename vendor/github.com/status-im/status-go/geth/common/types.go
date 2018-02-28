@@ -16,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/les"
 	"github.com/ethereum/go-ethereum/node"
-	whisper "github.com/ethereum/go-ethereum/whisper/whisperv5"
+	whisper "github.com/ethereum/go-ethereum/whisper/whisperv6"
 	"github.com/robertkrimen/otto"
 	"github.com/status-im/status-go/geth/params"
 	"github.com/status-im/status-go/geth/rpc"
@@ -160,14 +160,16 @@ type QueuedTx struct {
 }
 
 // SendTxArgs represents the arguments to submit a new transaction into the transaction pool.
+// This struct is based on go-ethereum's type in internal/ethapi/api.go, but we have freedom
+// over the exact layout of this struct.
 type SendTxArgs struct {
 	From     common.Address  `json:"from"`
 	To       *common.Address `json:"to"`
-	Gas      *hexutil.Big    `json:"gas"`
+	Gas      *hexutil.Uint64 `json:"gas"`
 	GasPrice *hexutil.Big    `json:"gasPrice"`
 	Value    *hexutil.Big    `json:"value"`
-	Data     hexutil.Bytes   `json:"data"`
 	Nonce    *hexutil.Uint64 `json:"nonce"`
+	Input    hexutil.Bytes   `json:"input"`
 }
 
 // JailCell represents single jail cell, which is basically a JavaScript VM.
@@ -177,6 +179,8 @@ type JailCell interface {
 	Set(string, interface{}) error
 	// Get a value from VM.
 	Get(string) (otto.Value, error)
+	// GetObjectValue returns the given name's otto.Value from the given otto.Value v. Should only be needed in tests.
+	GetObjectValue(otto.Value, string) (otto.Value, error)
 	// Run an arbitrary JS code. Input maybe string or otto.Script.
 	Run(interface{}) (otto.Value, error)
 	// Call an arbitrary JS function by name and args.
