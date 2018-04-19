@@ -5,16 +5,27 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
-	"github.com/mandrigin/status-go-bots/bots"
+	humanize "github.com/dustin/go-humanize"
+	"github.com/status-im/status-go/sdk"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
+
+type Msg struct {
+	sdk.Msg
+}
+
+func (m Msg) TimeString() string {
+	fmt.Println("m.Timestamp =", m.Timestamp)
+	t := time.Unix(m.Timestamp/int64(time.Millisecond)*10, 0)
+	return humanize.RelTime(t, time.Now(), "earlier", "later")
+}
 
 // ByTimestamp implements sort.Interface for []Person based on
 // the Timestamp field.
-type ByTimestamp []bots.StatusMessage
+type ByTimestamp []sdk.Msg
 
 func (a ByTimestamp) Len() int           { return len(a) }
 func (a ByTimestamp) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -22,7 +33,7 @@ func (a ByTimestamp) Less(i, j int) bool { return a[i].Timestamp > a[j].Timestam
 
 type messagesStore struct {
 	db       *leveldb.DB
-	messages []bots.StatusMessage
+	messages []sdk.Msg
 	maxCount int
 }
 
@@ -40,7 +51,7 @@ func NewMessagesStore(maxCount int) *messagesStore {
 	return &messagesStore{db, messages, maxCount}
 }
 
-func (ms *messagesStore) Add(message bots.StatusMessage) error {
+func (ms *messagesStore) Add(message sdk.Msg) error {
 	if len(ms.messages) >= ms.maxCount {
 		if message.Timestamp < ms.messages[0].Timestamp {
 			log.Println("Message is too old, ignoring", message.ID, message.Timestamp)
@@ -52,11 +63,11 @@ func (ms *messagesStore) Add(message bots.StatusMessage) error {
 		log.Println("Message already exists, ignoring", message.ID, message.Timestamp)
 	}
 
-	toRemove := make([]bots.StatusMessage, 0)
+	toRemove := make([]sdk.Msg, 0)
 	fromIdx := 0
 	if len(ms.messages) >= ms.maxCount {
 		fromIdx = len(ms.messages) - ms.maxCount + 1
-		toRemove = make([]bots.StatusMessage, fromIdx)
+		toRemove = make([]sdk.Msg, fromIdx)
 		copy(toRemove, ms.messages[:fromIdx])
 	}
 	messages := append(ms.messages[fromIdx:], message)
@@ -66,17 +77,21 @@ func (ms *messagesStore) Add(message bots.StatusMessage) error {
 	return ms.persist(toRemove, message)
 }
 
-func (ms *messagesStore) Messages(channel string) []bots.StatusMessage {
-	messages := messagesFromIterator(ms.db.NewIterator(util.BytesPrefix([]byte(channel)), nil))
+func (ms *messagesStore) Messages() []Msg {
+	messages := messagesFromIterator(ms.db.NewIterator(nil, nil))
 	sort.Sort(ByTimestamp(messages))
-	return messages
+	result := make([]Msg, len(messages))
+	for idx, msg := range messages {
+		result[idx] = Msg{msg}
+	}
+	return result
 }
 
 func (ms *messagesStore) Close() {
 	ms.db.Close()
 }
 
-func (ms *messagesStore) persist(toRemove []bots.StatusMessage, toAdd bots.StatusMessage) error {
+func (ms *messagesStore) persist(toRemove []sdk.Msg, toAdd sdk.Msg) error {
 	batch := new(leveldb.Batch)
 
 	data, err := json.Marshal(toAdd)
@@ -84,6 +99,7 @@ func (ms *messagesStore) persist(toRemove []bots.StatusMessage, toAdd bots.Statu
 		return err
 	}
 	log.Println("Adding: ", toAdd.ID, toAdd.Timestamp, toAdd.ChannelName)
+	log.Printf("Adding: %#v", toAdd)
 	batch.Put([]byte(key(toAdd)), []byte(data))
 
 	for _, messageToRemove := range toRemove {
@@ -100,12 +116,12 @@ func (ms *messagesStore) persist(toRemove []bots.StatusMessage, toAdd bots.Statu
 
 /* Helper functions */
 
-func messagesFromIterator(iter iterator.Iterator) []bots.StatusMessage {
-	messages := make([]bots.StatusMessage, 0)
+func messagesFromIterator(iter iterator.Iterator) []sdk.Msg {
+	messages := make([]sdk.Msg, 0)
 
 	for iter.Next() {
 		// Use key/value.
-		var message bots.StatusMessage
+		var message sdk.Msg
 		if err := json.Unmarshal(iter.Value(), &message); err != nil {
 			log.Println("Cound not unmarshal JSON. ERR: %v", err)
 		} else {
@@ -117,10 +133,6 @@ func messagesFromIterator(iter iterator.Iterator) []bots.StatusMessage {
 	return messages
 }
 
-func prefix(message bots.StatusMessage) string {
-	return fmt.Sprintf("%s", message.ChannelName)
-}
-
-func key(message bots.StatusMessage) string {
-	return fmt.Sprintf("%s-%s", prefix(message), message.ID)
+func key(message sdk.Msg) string {
+	return fmt.Sprintf("%s", message.ID())
 }

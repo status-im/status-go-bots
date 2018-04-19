@@ -15,6 +15,7 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates bash
 
 COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/pinger     /usr/local/bin/
+COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/pingerweb  /usr/local/bin/
 COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/chanreader /usr/local/bin/
 
 WORKDIR /etc/gs-bots/

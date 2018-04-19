@@ -8,12 +8,6 @@
   revision = "94b504f42fdd503acc3b3c79ec2b517d90e0de8a"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/NaySoftware/go-fcm"
-  packages = ["."]
-  revision = "28fff9381d17f35619309c7a5ada41d26030d976"
-
-[[projects]]
   name = "github.com/StackExchange/wmi"
   packages = ["."]
   revision = "5d049714c4a64225c3c79a7cf7d02f7fb5b96338"
@@ -49,6 +43,12 @@
     "base58"
   ]
   revision = "dcd4997b0664bcfd6ef48e4ae9da8396e08b1cd9"
+
+[[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -97,6 +97,8 @@
     "core/vm",
     "crypto",
     "crypto/bn256",
+    "crypto/bn256/cloudflare",
+    "crypto/bn256/google",
     "crypto/ecies",
     "crypto/randentropy",
     "crypto/secp256k1",
@@ -120,6 +122,7 @@
     "log",
     "log/term",
     "metrics",
+    "metrics/exp",
     "miner",
     "node",
     "p2p",
@@ -132,11 +135,10 @@
     "rpc",
     "trie",
     "whisper/mailserver",
-    "whisper/whisperv5",
     "whisper/whisperv6"
   ]
-  revision = "1e67410e88d2685bc54611a7c9f75c327b553ccc"
-  version = "v1.8.1"
+  revision = "2423ae01e0d2f853512eb2b46954b5ad0754a897"
+  version = "v1.8.4"
 
 [[projects]]
   branch = "master"
@@ -332,32 +334,9 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/rcrowley/go-metrics"
-  packages = [
-    ".",
-    "exp"
-  ]
-  revision = "8732c616f52954686704c8645fe1a9d59e9df7c1"
-
-[[projects]]
-  branch = "master"
   name = "github.com/rjeczalik/notify"
   packages = ["."]
   revision = "c31e5f2cb22b3e4ef3f882f413847669bf2652b9"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/robertkrimen/otto"
-  packages = [
-    ".",
-    "ast",
-    "dbg",
-    "file",
-    "parser",
-    "registry",
-    "token"
-  ]
-  revision = "3b44b4dcb6c00477273595c312908e2412d07da6"
 
 [[projects]]
   name = "github.com/rs/cors"
@@ -366,21 +345,20 @@
   version = "v1.2"
 
 [[projects]]
-  branch = "feature/whisperv6-#665"
+  branch = "sdk"
   name = "github.com/status-im/status-go"
   packages = [
     "extkeys",
     "geth/account",
-    "geth/common",
-    "geth/log",
     "geth/mailservice",
     "geth/node",
     "geth/params",
     "geth/rpc",
     "metrics/whisper",
+    "sdk",
     "static"
   ]
-  revision = "fb38e6c58ffb12b60bfa6457a52ff715f7d0ba32"
+  revision = "7af2d4cf36b09d101441cf430cdfeb2f740c3289"
 
 [[projects]]
   branch = "master"
@@ -507,15 +485,6 @@
   revision = "3c4db4ad4f2db84859454dc805d6eb7d8051a8ce"
 
 [[projects]]
-  name = "gopkg.in/sourcemap.v1"
-  packages = [
-    ".",
-    "base64vlq"
-  ]
-  revision = "6e83acea0053641eff084973fee085f0c193c61a"
-  version = "v1.0.5"
-
-[[projects]]
   name = "gopkg.in/urfave/cli.v1"
   packages = ["."]
   revision = "cfb38830724cc34fedffe9a2a29fb54fa9169cd1"
@@ -530,6 +499,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "78852882201dc929aa7a558c7d27994e20255f191c855f50ebc28901dd6aaa25"
+  inputs-digest = "6f08bccddf499165736ebc9a3927b8e71c22cf6a606b0bba5a68b91b2157a972"
   solver-name = "gps-cdcl"
   solver-version = 1

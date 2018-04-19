@@ -1,3 +1,6 @@
+// pinger.go
+// Public chat bot that sends a message every x seconds
+
 package main
 
 import (
@@ -5,21 +8,42 @@ import (
 	"time"
 
 	"github.com/mkideal/cli"
-
-	"github.com/mandrigin/status-go-bots/bots"
+	"github.com/status-im/status-go/sdk"
 )
 
+type argT struct {
+	cli.Helper
+	Username string `cli:"username" usage:"Username of the bot account" dft:"pinger"`
+	Password string `cli:"password" usage:"Password of the bot account" dft:"pinger"`
+	Channel  string `cli:"channel" usage:"Channel that bot listens to" dft:"humans-need-not-apply"`
+	Interval int    `cli:"interval" usage:"Send message every x second" dft:"5"`
+}
+
 func main() {
-	cli.Run(&bots.Config{}, func(ctx *cli.Context) error {
-		conf := ctx.Argv().(*bots.Config)
+	cli.Run(&argT{}, func(ctx *cli.Context) error {
+		conf := ctx.Argv().(*argT)
 
-		node := bots.Quickstart(*conf, 10*time.Second, func(ch *bots.StatusChannel) {
-			message := fmt.Sprintf("Gopher, gopher: %d", time.Now().Unix())
-			ch.SendMessage(message)
-		})
+		messagesSent := 0
 
-		// wait till node has been stopped
-		node.Wait()
+		conn, err := sdk.Connect(conf.Username, conf.Password)
+		if err != nil {
+			panic("Couldn't connect to status")
+		}
+
+		ch, err := conn.Join(conf.Channel)
+		if err != nil {
+			panic("Couldn't connect to status")
+		}
+
+		for range time.Tick(time.Duration(conf.Interval) * time.Second) {
+			messagesSent++
+			message := fmt.Sprintf("PING no %d : %d", messagesSent, time.Now().Unix())
+			ch.Publish(message)
+			fmt.Println("***************************************")
+			fmt.Printf("* SENT:  %17d   MESSAGES *\n", messagesSent)
+			fmt.Println("***************************************")
+		}
+
 		return nil
 	})
 }

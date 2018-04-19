@@ -16,7 +16,7 @@ ignored = ["github.com/ethereum/go-ethereum/whisper/notifications"]
 
 [[constraint]]
   name = "github.com/status-im/status-go"
-  branch = "feature/whisperv6-#665"
+  branch = "sdk"
 
 [[constraint]]
   name = "github.com/ethereum/go-ethereum"

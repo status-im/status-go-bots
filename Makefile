@@ -6,4 +6,5 @@ docker-image:
 allbots:
 	go build -i -o ./pinger     -v  ./cmd/pinger
 	go build -i -o ./chanreader -v ./cmd/chanreader
+	go build -i -o ./pingerweb -v ./cmd/pingerweb
 	

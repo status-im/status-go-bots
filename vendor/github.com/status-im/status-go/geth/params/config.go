@@ -11,21 +11,9 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/status-im/status-go/geth/log"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/status-im/status-go/static"
 )
-
-// default node configuration options
-var (
-	UseMainnetFlag = "false" // to be overridden via -ldflags '-X geth/params.UseMainnetFlag'
-	UseMainnet     = false
-)
-
-func init() {
-	if UseMainnetFlag == "true" { // set at compile time, here we make sure to set corresponding boolean flag
-		UseMainnet = true
-	}
-}
 
 // errors
 var (
@@ -36,6 +24,10 @@ var (
 	ErrEmptyAuthorizationKeyFile  = errors.New("authorization key file cannot be empty")
 	ErrAuthorizationKeyFileNotSet = errors.New("authorization key file is not set")
 )
+
+// ----------
+// LightEthConfig
+// ----------
 
 // LightEthConfig holds LES-related configuration
 // Status nodes are always lightweight clients (due to mobile platform constraints)
@@ -49,6 +41,10 @@ type LightEthConfig struct {
 	// DatabaseCache is memory (in MBs) allocated to internal caching (min 16MB / database forced)
 	DatabaseCache int
 }
+
+// ----------
+// FirebaseConfig
+// ----------
 
 // FirebaseConfig holds FCM-related configuration
 type FirebaseConfig struct {
@@ -78,6 +74,10 @@ func (c *FirebaseConfig) ReadAuthorizationKeyFile() ([]byte, error) {
 
 	return key, nil
 }
+
+// ----------
+// WhisperConfig
+// ----------
 
 // WhisperConfig holds SHH-related configuration
 type WhisperConfig struct {
@@ -138,6 +138,10 @@ func (c *WhisperConfig) String() string {
 	return string(data)
 }
 
+// ----------
+// SwarmConfig
+// ----------
+
 // SwarmConfig holds Swarm-related configuration
 type SwarmConfig struct {
 	// Enabled flag specifies whether protocol is enabled
@@ -150,25 +154,34 @@ func (c *SwarmConfig) String() string {
 	return string(data)
 }
 
-// BootClusterConfig holds configuration for supporting boot cluster, which is a temporary
+// ----------
+// ClusterConfig
+// ----------
+
+// ClusterConfig holds configuration for supporting cluster peers, which is a temporary
 // means for mobile devices to get connected to Ethereum network (UDP-based discovery
 // may not be available, so we need means to discover the network manually).
-type BootClusterConfig struct {
+type ClusterConfig struct {
 	// Enabled flag specifies whether feature is enabled
 	Enabled bool
 
-	// BootNodes list of bootstrap nodes for a given network (Ropsten, Rinkeby, Homestead),
+	// StaticNodes lists the static nodes taken from compiled or passed cluster.json
+	StaticNodes []string
+
+	// BootNodes list of cluster peer nodes for a given network (Ropsten, Rinkeby, Homestead),
 	// for a given mode (production vs development)
 	BootNodes []string
 }
 
 // String dumps config object as nicely indented JSON
-func (c *BootClusterConfig) String() string {
+func (c *ClusterConfig) String() string {
 	data, _ := json.MarshalIndent(c, "", "    ") // nolint: gas
 	return string(data)
 }
 
-//=====================================================================================
+// ----------
+// UpstreamRPCConfig
+// ----------
 
 // UpstreamRPCConfig stores configuration for upstream rpc connection.
 type UpstreamRPCConfig struct {
@@ -180,7 +193,9 @@ type UpstreamRPCConfig struct {
 	URL string
 }
 
-//=====================================================================================
+// ----------
+// NodeConfig
+// ----------
 
 // NodeConfig stores configuration options for a node
 type NodeConfig struct {
@@ -199,7 +214,7 @@ type NodeConfig struct {
 	// If KeyStoreDir is empty, the default location is the "keystore" subdirectory of DataDir.
 	KeyStoreDir string
 
-	// PrivateKeyFile is a filename with node ID (private key)
+	// NodeKeyFile is a filename with node ID (private key)
 	// This file should contain a valid secp256k1 private key that will be used for both
 	// remote peer identification as well as network traffic encryption.
 	NodeKeyFile string
@@ -256,6 +271,8 @@ type NodeConfig struct {
 	// handshake phase, counted separately for inbound and outbound connections.
 	MaxPendingPeers int
 
+	log log.Logger
+
 	// LogFile is filename where exposed logs get written to
 	LogFile string
 
@@ -268,8 +285,12 @@ type NodeConfig struct {
 	// UpstreamConfig extra config for providing upstream infura server.
 	UpstreamConfig UpstreamRPCConfig `json:"UpstreamConfig"`
 
-	// BootClusterConfig extra configuration for supporting cluster
-	BootClusterConfig *BootClusterConfig `json:"BootClusterConfig," validate:"structonly"`
+	// ClusterConfigFile contains the file name of the cluster configuration. If
+	// empty the statical configuration data will be taken.
+	ClusterConfigFile string `json:"ClusterConfigFile"`
+
+	// ClusterConfig extra configuration for supporting cluster peers.
+	ClusterConfig *ClusterConfig `json:"ClusterConfig," validate:"structonly"`
 
 	// LightEthConfig extra configuration for LES
 	LightEthConfig *LightEthConfig `json:"LightEthConfig," validate:"structonly"`
@@ -282,29 +303,32 @@ type NodeConfig struct {
 }
 
 // NewNodeConfig creates new node configuration object
-func NewNodeConfig(dataDir string, networkID uint64, devMode bool) (*NodeConfig, error) {
+func NewNodeConfig(dataDir string, clstrCfgFile string, networkID uint64, devMode bool) (*NodeConfig, error) {
 	nodeConfig := &NodeConfig{
-		DevMode:         devMode,
-		NetworkID:       networkID,
-		DataDir:         dataDir,
-		Name:            ClientIdentifier,
-		Version:         Version,
-		RPCEnabled:      RPCEnabledDefault,
-		HTTPHost:        HTTPHost,
-		HTTPPort:        HTTPPort,
-		ListenAddr:      ListenAddr,
-		APIModules:      APIModules,
-		WSHost:          WSHost,
-		WSPort:          WSPort,
-		MaxPeers:        MaxPeers,
-		MaxPendingPeers: MaxPendingPeers,
-		IPCFile:         IPCFile,
-		LogFile:         LogFile,
-		LogLevel:        LogLevel,
-		LogToStderr:     LogToStderr,
-		BootClusterConfig: &BootClusterConfig{
-			Enabled:   true,
-			BootNodes: []string{},
+		DevMode:           devMode,
+		NetworkID:         networkID,
+		DataDir:           dataDir,
+		Name:              ClientIdentifier,
+		Version:           Version,
+		RPCEnabled:        RPCEnabledDefault,
+		HTTPHost:          HTTPHost,
+		HTTPPort:          HTTPPort,
+		ListenAddr:        ListenAddr,
+		APIModules:        APIModules,
+		WSHost:            WSHost,
+		WSPort:            WSPort,
+		MaxPeers:          MaxPeers,
+		MaxPendingPeers:   MaxPendingPeers,
+		IPCFile:           IPCFile,
+		log:               log.New("package", "status-go/geth/params.NodeConfig"),
+		LogFile:           LogFile,
+		LogLevel:          LogLevel,
+		LogToStderr:       LogToStderr,
+		ClusterConfigFile: clstrCfgFile,
+		ClusterConfig: &ClusterConfig{
+			Enabled:     true,
+			StaticNodes: []string{},
+			BootNodes:   []string{},
 		},
 		LightEthConfig: &LightEthConfig{
 			Enabled:       true,
@@ -344,7 +368,7 @@ func LoadNodeConfig(configJSON string) (*NodeConfig, error) {
 }
 
 func loadNodeConfig(configJSON string) (*NodeConfig, error) {
-	nodeConfig, err := NewNodeConfig("", 0, true)
+	nodeConfig, err := NewNodeConfig("", "", 0, true)
 	if err != nil {
 		return nil, err
 	}
@@ -386,8 +410,8 @@ func (c *NodeConfig) Validate() error {
 		return err
 	}
 
-	if c.BootClusterConfig.Enabled {
-		if err := validate.Struct(c.BootClusterConfig); err != nil {
+	if c.ClusterConfig.Enabled {
+		if err := validate.Struct(c.ClusterConfig); err != nil {
 			return err
 		}
 	}
@@ -429,13 +453,14 @@ func (c *NodeConfig) Save() error {
 		return err
 	}
 
-	log.Info(fmt.Sprintf("config file saved: %v", configFilePath))
+	c.log.Info("config file saved", "path", configFilePath)
 	return nil
 }
 
 // updateConfig traverses configuration and adjusts dependent fields
 // (we have a development/production and mobile/full node dependent configurations)
 func (c *NodeConfig) updateConfig() error {
+	// Update separate configurations.
 	if err := c.updateGenesisConfig(); err != nil {
 		return err
 	}
@@ -444,7 +469,7 @@ func (c *NodeConfig) updateConfig() error {
 		return err
 	}
 
-	if err := c.updateBootClusterConfig(); err != nil {
+	if err := c.updateClusterConfig(); err != nil {
 		return err
 	}
 
@@ -522,46 +547,34 @@ func (c *NodeConfig) updateUpstreamConfig() error {
 	return nil
 }
 
-// updateBootClusterConfig loads boot nodes and CHT for a given network and mode.
+// updateClusterConfig loads static peer nodes and CHT for a given network and mode.
 // This is necessary until we have LES protocol support CHT sync, and better node
 // discovery on mobile devices)
-func (c *NodeConfig) updateBootClusterConfig() error {
-	if !c.BootClusterConfig.Enabled {
+func (c *NodeConfig) updateClusterConfig() error {
+	if !c.ClusterConfig.Enabled {
 		return nil
 	}
 
-	// TODO: Remove this thing as this is an ugly hack.
-	// Once CHT sync sub-protocol is working in LES, we will rely on it, as it provides
-	// decentralized solution. For now, in order to avoid forcing users to long sync times
-	// we use central static resource
-	type subClusterConfig struct {
-		Number    int      `json:"number"`
-		Hash      string   `json:"hash"`
-		BootNodes []string `json:"bootnodes"`
-	}
-	type clusterConfig struct {
-		NetworkID   int              `json:"networkID"`
-		GenesisHash string           `json:"genesisHash"`
-		Prod        subClusterConfig `json:"prod"`
-		Dev         subClusterConfig `json:"dev"`
-	}
-
-	chtFile, err := static.Asset("config/staticpeers.json")
-	if err != nil {
-		return fmt.Errorf("staticpeers.json could not be loaded: %s", err)
-	}
-
-	var clusters []clusterConfig
-	err = json.Unmarshal(chtFile, &clusters)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal staticpeers.json: %s", err)
+	var clusters []clusterData
+	if c.ClusterConfigFile != "" {
+		// Load cluster configuration from external file.
+		configFile, err := ioutil.ReadFile(c.ClusterConfigFile)
+		if err != nil {
+			return fmt.Errorf("cluster configuration file '%s' could not be loaded: %s", c.ClusterConfigFile, err)
+		}
+		err = json.Unmarshal(configFile, &clusters)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal cluster configuration file: %s", err)
+		}
+	} else {
+		clusters = defaultClusters
 	}
 
 	for _, cluster := range clusters {
 		if cluster.NetworkID == int(c.NetworkID) {
-			c.BootClusterConfig.BootNodes = cluster.Prod.BootNodes
+			c.ClusterConfig.StaticNodes = cluster.Prod.StaticNodes
 			if c.DevMode {
-				c.BootClusterConfig.BootNodes = cluster.Dev.BootNodes
+				c.ClusterConfig.StaticNodes = cluster.Dev.StaticNodes
 			}
 			break
 		}

@@ -14,13 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/les"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/whisper/mailserver"
 	whisper "github.com/ethereum/go-ethereum/whisper/whisperv6"
-	"github.com/status-im/status-go/geth/log"
 	"github.com/status-im/status-go/geth/params"
 	shhmetrics "github.com/status-im/status-go/metrics/whisper"
 )
@@ -34,6 +34,9 @@ var (
 	ErrNodeRunFailure                    = errors.New("error running p2p node")
 	ErrNodeStartFailure                  = errors.New("error starting p2p node")
 )
+
+// All general log messages in this package should be routed through this logger.
+var logger = log.New("package", "status-go/geth/node")
 
 // MakeNode create a geth node entity
 func MakeNode(config *params.NodeConfig) (*node.Node, error) {
@@ -51,10 +54,10 @@ func MakeNode(config *params.NodeConfig) (*node.Node, error) {
 	stackConfig := defaultEmbeddedNodeConfig(config)
 
 	if len(config.NodeKeyFile) > 0 {
-		log.Info("Loading private key file", "file", config.NodeKeyFile)
+		logger.Info("Loading private key file", "file", config.NodeKeyFile)
 		pk, err := crypto.LoadECDSA(config.NodeKeyFile)
 		if err != nil {
-			log.Warn(fmt.Sprintf("Failed loading private key file '%s': %v", config.NodeKeyFile, err))
+			logger.Error("Failed loading private key file", "file", config.NodeKeyFile, "error", err)
 		}
 
 		// override node's private key
@@ -92,7 +95,7 @@ func defaultEmbeddedNodeConfig(config *params.NodeConfig) *node.Config {
 		Version:           config.Version,
 		P2P: p2p.Config{
 			NoDiscovery:      !config.Discovery,
-			DiscoveryV5:      true,
+			DiscoveryV5:      config.Discovery,
 			BootstrapNodes:   nil,
 			BootstrapNodesV5: nil,
 			ListenAddr:       config.ListenAddr,
@@ -115,8 +118,9 @@ func defaultEmbeddedNodeConfig(config *params.NodeConfig) *node.Config {
 		nc.HTTPPort = config.HTTPPort
 	}
 
-	if config.BootClusterConfig.Enabled {
-		nc.P2P.BootstrapNodes = makeBootstrapNodes(config.BootClusterConfig.BootNodes)
+	if config.ClusterConfig.Enabled {
+		nc.P2P.StaticNodes = parseNodes(config.ClusterConfig.StaticNodes)
+		nc.P2P.BootstrapNodes = parseNodes(config.ClusterConfig.BootNodes)
 	}
 
 	return nc
@@ -125,7 +129,7 @@ func defaultEmbeddedNodeConfig(config *params.NodeConfig) *node.Config {
 // activateEthService configures and registers the eth.Ethereum service with a given node.
 func activateEthService(stack *node.Node, config *params.NodeConfig) error {
 	if !config.LightEthConfig.Enabled {
-		log.Info("LES protocol is disabled")
+		logger.Info("LES protocol is disabled")
 		return nil
 	}
 
@@ -154,8 +158,9 @@ func activateEthService(stack *node.Node, config *params.NodeConfig) error {
 
 // activateShhService configures Whisper and adds it to the given node.
 func activateShhService(stack *node.Node, config *params.NodeConfig) error {
+
 	if !config.WhisperConfig.Enabled {
-		log.Info("SHH protocol is disabled")
+		logger.Info("SHH protocol is disabled")
 		return nil
 	}
 
@@ -178,7 +183,7 @@ func activateShhService(stack *node.Node, config *params.NodeConfig) error {
 				}
 			}
 
-			log.Info("Register MailServer")
+			logger.Info("Register MailServer")
 
 			var mailServer mailserver.WMailServer
 			whisperService.RegisterServer(&mailServer)
@@ -216,12 +221,11 @@ func makeWSHost(config *params.NodeConfig) string {
 	return config.WSHost
 }
 
-// makeBootstrapNodes returns default (hence bootstrap) list of peers
-func makeBootstrapNodes(enodes []string) []*discover.Node {
-	var bootstrapNodes []*discover.Node
-	for _, enode := range enodes {
-		bootstrapNodes = append(bootstrapNodes, discover.MustParseNode(enode))
+// parseNodes creates list of discover.Node out of enode strings.
+func parseNodes(enodes []string) []*discover.Node {
+	nodes := make([]*discover.Node, len(enodes))
+	for i, enode := range enodes {
+		nodes[i] = discover.MustParseNode(enode)
 	}
-
-	return bootstrapNodes
+	return nodes
 }
