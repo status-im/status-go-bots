@@ -40,8 +40,8 @@ func (c *Conn) Start(config *Config) error {
 func Connect(user, password string) (*Conn, error) {
 	var err error
 
-	log.Println("Using default config ...")
-	config := DefaultConfig()
+	log.Println("Using mainnet config ...")
+	config := MainnetConfig() // DefaultConfig()
 	if err != nil {
 		log.Fatalf("Making config failed: %v", err)
 		return nil, err
