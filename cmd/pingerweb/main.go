@@ -30,8 +30,8 @@ func main() {
 
 		r := gin.Default()
 		r.GET("/ping/:channel", func(c *gin.Context) {
-			interval := MustParseIntFromQuery(c, "interval")
-			count := MustParseIntFromQuery(c, "count")
+			interval := MustParseIntFromQuery(c, "interval", "1000")
+			count := MustParseIntFromQuery(c, "count", "1")
 
 			ch, err := conn.Join(c.Param("channel"))
 			if err != nil {
@@ -41,7 +41,7 @@ func main() {
 			c.Writer.WriteHeader(200)
 
 			messagesSent := 0
-			for range time.Tick(time.Duration(interval) * time.Second) {
+			for range time.Tick(time.Duration(interval) * time.Millisecond) {
 				message := fmt.Sprintf("PING no %d : %d", messagesSent, time.Now().Unix())
 				ch.Publish(message)
 				messagesSent++
@@ -65,8 +65,8 @@ func main() {
 	})
 }
 
-func MustParseIntFromQuery(c *gin.Context, q string) int {
-	valueStr := c.DefaultQuery(q, "1")
+func MustParseIntFromQuery(c *gin.Context, q string, defaultValue string) int {
+	valueStr := c.DefaultQuery(q, defaultValue)
 	value, err := strconv.ParseInt(valueStr, 10, 64)
 	if err != nil {
 		panic(err)
