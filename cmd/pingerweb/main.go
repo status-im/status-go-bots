@@ -10,7 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mkideal/cli"
-	"github.com/status-im/status-go/sdk"
+
+	sdk "github.com/status-im/status-go-sdk"
 )
 
 type argT struct {
