@@ -5,12 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
 // Msg is a structure used by Subscribers and Publish().
 type Msg struct {
+	ID          string `json:"id"`
 	From        string `json:"from"`
 	Text        string `json:"text"`
 	ChannelName string `json:"channel"`
@@ -21,15 +20,12 @@ type Msg struct {
 // NewMsg : Creates a new Msg with a generated UUID
 func NewMsg(from, text, channel string) *Msg {
 	return &Msg{
+		ID:          newUUID(),
 		From:        from,
 		Text:        text,
 		ChannelName: channel,
 		Timestamp:   time.Now().Unix(),
 	}
-}
-
-func (m *Msg) ID() string {
-	return fmt.Sprintf("%X", sha3.Sum256([]byte(m.Raw)))
 }
 
 // ToPayload  converts current struct to a valid payload
@@ -49,15 +45,12 @@ func MessageFromPayload(payload string) (*Msg, error) {
 		return nil, err
 	}
 	var x []interface{}
-	err = json.Unmarshal([]byte(message), &x)
-	if err != nil {
-		return nil, errors.New("unsupported message type, json err: " + err.Error())
-	}
+	json.Unmarshal([]byte(message), &x)
 	if len(x) < 1 {
-		return nil, errors.New("unsupported message type, no messages")
+		return nil, errors.New("unsupported message type")
 	}
 	if x[0].(string) != "~#c4" {
-		return nil, errors.New("unsupported message type, wrong prefix: " + x[0].(string))
+		return nil, errors.New("unsupported message type")
 	}
 	properties := x[1].([]interface{})
 
