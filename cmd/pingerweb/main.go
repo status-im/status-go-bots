@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mkideal/cli"
 
+	"github.com/ethereum/go-ethereum/rpc"
 	sdk "github.com/status-im/status-go-sdk"
 )
 
@@ -24,9 +25,18 @@ func main() {
 	cli.Run(&argT{}, func(ctx *cli.Context) error {
 		conf := ctx.Argv().(*argT)
 
-		conn, err := sdk.Connect(conf.Username, conf.Password)
+		rpcClient, err := rpc.Dial("http://localhost:8545")
+
 		if err != nil {
-			panic("Couldn't connect to status")
+			panic("couldn't connect to the local statusd instance")
+		}
+
+		client := sdk.New(rpcClient)
+
+		user, err := client.SignupAndLogin(conf.Password)
+
+		if err != nil {
+			panic(err)
 		}
 
 		r := gin.Default()
@@ -34,9 +44,9 @@ func main() {
 			interval := MustParseIntFromQuery(c, "interval", "1000")
 			count := MustParseIntFromQuery(c, "count", "1")
 
-			ch, err := conn.Join(c.Param("channel"))
+			ch, err := user.JoinPublicChannel(c.Param("channel"))
 			if err != nil {
-				panic("Couldn't connect to channel:" + c.Param("channel"))
+				panic("Couldn't connect to channel: " + c.Param("channel") + "reason: " + err.Error())
 			}
 
 			c.Writer.WriteHeader(200)
@@ -44,7 +54,10 @@ func main() {
 			messagesSent := 0
 			for range time.Tick(time.Duration(interval) * time.Millisecond) {
 				message := fmt.Sprintf("PING no %d : %d", messagesSent, time.Now().Unix())
-				ch.Publish(message)
+				err := ch.Publish(message)
+				if err != nil {
+					fmt.Println("error while publishing -> " + err.Error())
+				}
 				messagesSent++
 
 				c.Writer.WriteString(fmt.Sprintf("* SENT:  %17d   MESSAGES -> %s*\n", messagesSent, message))
