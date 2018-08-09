@@ -6,19 +6,13 @@ ignored = ["github.com/ethereum/go-ethereum/whisper/notifications"]
 
   [[prune.project]]
     name = "github.com/karalabe/hid"
-    non-go = false
     unused-packages = false
 
   [[prune.project]]
     name = "github.com/ethereum/go-ethereum"
-    non-go = false
     unused-packages = false
 
-[[constraint]]
-  name = "github.com/status-im/status-go"
-  branch = "sdk"
-
-[[constraint]]
+[[override]]
   name = "github.com/ethereum/go-ethereum"
   branch = "release/1.8"
 
