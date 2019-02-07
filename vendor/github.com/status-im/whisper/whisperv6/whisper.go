@@ -124,7 +124,7 @@ func New(cfg *Config) *Whisper {
 		quit:                 make(chan struct{}),
 		syncAllowance:        DefaultSyncAllowance,
 		timeSource:           time.Now,
-		disableConfirmations: cfg.DisableConfirmations,
+		disableConfirmations: true,
 	}
 
 	whisper.filters = NewFilters(whisper)
