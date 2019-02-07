@@ -10,7 +10,9 @@ ADD . .
 RUN make allbots
 
 WORKDIR /go/src/github.com/status-im/status-go
-ADD . vendor/github.com/status-im/status-go
+ADD vendor/github.com/status-im/status-go .
+RUN pwd
+RUN ls -la
 RUN make statusgo
 
 # Copy the binary to the second image
