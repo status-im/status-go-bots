@@ -31,6 +31,15 @@ func (c *SDK) Login(addr, pwd string) (a *Account, err error) {
 	}, err
 }
 
+func (c *SDK) Readonly() *Account {
+	return &Account{
+		conn:     c,
+		Address:  "none",
+		PubKey:   "none",
+		Mnemonic: "none",
+	}
+}
+
 // Signup creates a new account with the given credentials
 func (c *SDK) Signup(pwd string) (a *Account, err error) {
 	res, err := statusSignupRequest(c, pwd)

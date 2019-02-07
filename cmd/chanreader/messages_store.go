@@ -19,7 +19,7 @@ type Msg struct {
 
 func (m Msg) TimeString() string {
 	fmt.Println("m.Timestamp =", m.Timestamp)
-	t := time.Unix(m.Timestamp/int64(time.Millisecond)*10, 0)
+	t := time.Unix(m.Timestamp, 0)
 	return humanize.RelTime(t, time.Now(), "earlier", "later")
 }
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
@@ -52,18 +54,40 @@ func supportedMessage(msgType string) bool {
 
 // Msg is a structure used by Subscribers and Publish().
 type Msg struct {
-	From        string   `json:"from"`
-	PubKey      string   `json:"sig"`
-	ChannelName string   `json:"channel"`
-	Channel     *Channel `json:"-"`
-	Raw         string   `json:"-"`
-	Type        string   `json:"-"`
-	Properties  interface{}
+	PubKey      string      `json:"sig"`
+	ChannelName string      `json:"channel"`
+	Channel     *Channel    `json:"-"`
+	Raw         string      `json:"-"`
+	Type        string      `json:"-"`
+	Timestamp   int64       `json:"timestamp"`
+	Properties  interface{} `json:"properties"`
 }
 
 // ID gets the message id
 func (m *Msg) ID() string {
 	return fmt.Sprintf("%X", sha3.Sum256([]byte(m.Raw)))
+}
+
+func (m *Msg) Valid() bool {
+	return m.Text() != ""
+}
+
+func (m *Msg) Text() string {
+	if m.Properties == nil {
+		return ""
+	}
+
+	mm, isMap := m.Properties.(map[string]interface{})
+
+	if isMap {
+		text, okay := mm["Text"]
+		if okay {
+			return fmt.Sprintf("%v", text)
+		}
+		return ""
+	}
+
+	return ""
 }
 
 func rawrChatMessage(raw string) string {
@@ -83,6 +107,10 @@ func messageFromEnvelope(u interface{}) (msg *Msg, err error) {
 		msg.PubKey = pubkey.(string)
 	}
 	return
+}
+
+func (m *Msg) From() string {
+	return getThreeWordName(m.PubKey)
 }
 
 func messageFromPayload(payload string) (*Msg, error) {
@@ -106,12 +134,13 @@ func messageFromPayload(payload string) (*Msg, error) {
 	}
 
 	message := Msg{
-		From: "TODO : someone",
-		Type: msgType,
-		Raw:  string(rawMsg),
+		Type:      msgType,
+		Raw:       string(rawMsg),
+		Timestamp: time.Now().Unix(),
 	}
 
 	properties := msg[1].([]interface{})
+	os.Stderr.WriteString(fmt.Sprintf("\nProperties -> %+v\n\n", properties))
 	switch msgType {
 	case NewContactKeyType:
 		message.Properties = newContactKeyMsgFromProperties(properties)
