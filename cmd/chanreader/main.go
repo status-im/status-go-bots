@@ -28,10 +28,6 @@ func checkErr(err error) {
 
 func main() {
 	cli.Run(&argT{}, func(ctx *cli.Context) error {
-		conf := ctx.Argv().(*argT)
-
-		messages := NewMessagesStore(1000)
-		defer messages.Close()
 
 		rpcClient, err := rpc.Dial("http://localhost:8545")
 		checkErr(err)
@@ -40,33 +36,41 @@ func main() {
 
 		a := client.Readonly()
 
-		ch, err := a.JoinPublicChannel("igorm-test")
-		checkErr(err)
-
-		_, _ = ch.Subscribe(func(m *sdk.Msg) {
-			if m != nil {
-				log.Println("Message from ", m.From, " with body: ", m.Raw)
-				if err := messages.Add(*m); err != nil {
-					log.Printf("Error while storing message: ERR: %v", err)
-				}
-			} else {
-				log.Println("received a nil message!")
-			}
-		})
-
 		r := gin.Default()
 		r.LoadHTMLGlob("_assets/html/*")
-		r.GET("/json", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"messages": validMessages(messages.Messages()),
+
+		monitorChannel := func(channel string) *messagesStore {
+			messages := NewMessagesStore(10000, channel)
+
+			ch, err := a.JoinPublicChannel(channel)
+			checkErr(err)
+
+			_, _ = ch.Subscribe(func(m *sdk.Msg) {
+				if m != nil {
+					log.Println("Message from ", m.From, " with body: ", m.Raw)
+					if err := messages.Add(*m); err != nil {
+						log.Printf("Error while storing message: ERR: %v", err)
+					}
+				} else {
+					log.Println("received a nil message!")
+				}
 			})
-		})
-		r.GET("/html", func(c *gin.Context) {
-			c.HTML(http.StatusOK, "index.tmpl", gin.H{
-				"ChannelName": conf.Channel,
-				"Messages":    validMessages(messages.Messages()),
+
+			r.GET("/"+channel, func(c *gin.Context) {
+				c.HTML(http.StatusOK, "index.tmpl", gin.H{
+					"ChannelName": channel,
+					"Messages":    validMessages(messages.Messages()),
+				})
 			})
-		})
+
+			return messages
+		}
+
+		for _, channel := range []string{"ethdenver", "teambuilding", "status", "test"} {
+			db := monitorChannel(channel)
+			defer db.Close()
+		}
+
 		r.Run() // listen and serve on 0.0.0.0:8080
 
 		return nil

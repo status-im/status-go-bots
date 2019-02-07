@@ -37,8 +37,8 @@ type messagesStore struct {
 	maxCount int
 }
 
-func NewMessagesStore(maxCount int) *messagesStore {
-	db, err := leveldb.OpenFile("/data/sg_bots/sg_spectator/messages_store", nil)
+func NewMessagesStore(maxCount int, channelName string) *messagesStore {
+	db, err := leveldb.OpenFile("/data/sg_bots/sg_spectator/messages_store"+channelName, nil)
 	if err != nil {
 		log.Fatal("can't open levelDB file. ERR: %v", err)
 	}
