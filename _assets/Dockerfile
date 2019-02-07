@@ -9,13 +9,15 @@ WORKDIR /go/src/github.com/mandrigin/status-go-bots
 ADD . .
 RUN make allbots
 
+WORKDIR /go/src/github.com/status-im/status-go
+ADD . vendor/github.com/status-im/status-go
+RUN make statusgo
+
 # Copy the binary to the second image
 FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates bash
 
-COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/pinger     /usr/local/bin/
-COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/pingerweb  /usr/local/bin/
 COPY --from=builder /go/src/github.com/mandrigin/status-go-bots/chanreader /usr/local/bin/
 
 WORKDIR /etc/gs-bots/
