@@ -41,6 +41,13 @@ import (
 
 // TODO make sure we're doing this ^^^^ !!!!!!
 
+type KeyPurpose int
+
+const (
+	KeyPurposeWallet KeyPurpose = iota + 1
+	KeyPurposeChat
+)
+
 const (
 	// HardenedKeyStart defines a starting point for hardened key.
 	// Each extended key has 2^31 normal child keys and 2^31 hardened child keys.
@@ -70,11 +77,16 @@ const (
 
 	// EmptyExtendedKeyString marker string for zero extended key
 	EmptyExtendedKeyString = "Zeroed extended key"
+
+	// MaxDepth is the maximum depth of an extended key.
+	// Extended keys with depth MaxDepth cannot derive child keys.
+	MaxDepth = 255
 )
 
 // errors
 var (
 	ErrInvalidKey                 = errors.New("key is invalid")
+	ErrInvalidKeyPurpose          = errors.New("key purpose is invalid")
 	ErrInvalidSeed                = errors.New("seed is invalid")
 	ErrInvalidSeedLen             = fmt.Errorf("the recommended size of seed is %d-%d bits", MinSeedBytes, MaxSeedBytes)
 	ErrDerivingHardenedFromPublic = errors.New("cannot derive a hardened key from public key")
@@ -82,6 +94,7 @@ var (
 	ErrInvalidKeyLen              = errors.New("serialized extended key length is invalid")
 	ErrDerivingChild              = errors.New("error deriving child key")
 	ErrInvalidMasterKey           = errors.New("invalid master key supplied")
+	ErrMaxDepthExceeded           = errors.New("max depth exceeded")
 )
 
 var (
@@ -90,12 +103,31 @@ var (
 
 	// PublicKeyVersion is version for public key
 	PublicKeyVersion, _ = hex.DecodeString("0488B21E")
+
+	// EthBIP44ParentPath is BIP44 keys parent's derivation path
+	EthBIP44ParentPath = []uint32{
+		HardenedKeyStart + 44,          // purpose
+		HardenedKeyStart + CoinTypeETH, // cointype set to ETH
+		HardenedKeyStart + 0,           // account
+		0,                              // 0 - public, 1 - private
+	}
+
+	// EIP1581KeyTypeChat is used as chat key_type in the derivation of EIP1581 keys
+	EIP1581KeyTypeChat uint32 = 0x00
+
+	// EthEIP1581ChatParentPath is EIP-1581 chat keys parent's derivation path
+	EthEIP1581ChatParentPath = []uint32{
+		HardenedKeyStart + 43,                 // purpose
+		HardenedKeyStart + CoinTypeETH,        // cointype set to ETH
+		HardenedKeyStart + 1581,               // EIP-1581 subpurpose
+		HardenedKeyStart + EIP1581KeyTypeChat, // key_type (chat)
+	}
 )
 
 // ExtendedKey represents BIP44-compliant HD key
 type ExtendedKey struct {
 	Version          []byte // 4 bytes, mainnet: 0x0488B21E public, 0x0488ADE4 private; testnet: 0x043587CF public, 0x04358394 private
-	Depth            uint16 // 1 byte,  depth: 0x00 for master nodes, 0x01 for level-1 derived keys, ....
+	Depth            uint8  // 1 byte,  depth: 0x00 for master nodes, 0x01 for level-1 derived keys, ....
 	FingerPrint      []byte // 4 bytes, fingerprint of the parent's key (0x00000000 if master key)
 	ChildNumber      uint32 // 4 bytes, This is ser32(i) for i in xi = xpar/i, with xi the key being serialized. (0x00000000 if master key)
 	KeyData          []byte // 33 bytes, the public key or private key data (serP(K) for public keys, 0x00 || ser256(k) for private keys)
@@ -104,16 +136,19 @@ type ExtendedKey struct {
 	CachedPubKeyData []byte // (non-serialized) used for memoization of public key (calculated from a private key)
 }
 
+// nolint: gas
+const masterSecret = "Bitcoin seed"
+
 // NewMaster creates new master node, root of HD chain/tree.
 // Both master and child nodes are of ExtendedKey type, and all the children derive from the root node.
-func NewMaster(seed, salt []byte) (*ExtendedKey, error) {
+func NewMaster(seed []byte) (*ExtendedKey, error) {
 	// Ensure seed is within expected limits
 	lseed := len(seed)
 	if lseed < MinSeedBytes || lseed > MaxSeedBytes {
 		return nil, ErrInvalidSeedLen
 	}
 
-	secretKey, chainCode, err := splitHMAC(seed, salt)
+	secretKey, chainCode, err := splitHMAC(seed, []byte(masterSecret))
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +179,10 @@ func NewMaster(seed, salt []byte) (*ExtendedKey, error) {
 // 3) Public extended key -> Non-hardened child public extended key
 // 4) Public extended key -> Hardened child public extended key (INVALID!)
 func (k *ExtendedKey) Child(i uint32) (*ExtendedKey, error) {
+	if k.Depth == MaxDepth {
+		return nil, ErrMaxDepthExceeded
+	}
+
 	// A hardened child may not be created from a public extended key (Case #4).
 	isChildHardened := i >= HardenedKeyStart
 	if !k.IsPrivate && isChildHardened {
@@ -182,7 +221,22 @@ func (k *ExtendedKey) Child(i uint32) (*ExtendedKey, error) {
 		keyBigInt.Add(keyBigInt, parentKeyBigInt)
 		keyBigInt.Mod(keyBigInt, btcec.S256().N)
 
-		child.KeyData = keyBigInt.Bytes()
+		// Make sure that child.KeyData is 32 bytes of data even if the value is represented with less bytes.
+		// When we derive a child of this key, we call splitHMAC that does a sha512 of a seed that is:
+		// - 1 byte with 0x00
+		// - 32 bytes for the key data
+		// - 4 bytes for the child key index
+		// If we don't padd the KeyData, it will be shifted to left in that 32 bytes space
+		// generating a different seed and different child key.
+		// This part fixes a bug we had previously and described at:
+		// https://medium.com/@alexberegszaszi/why-do-my-bip32-wallets-disagree-6f3254cc5846#.86inuifuq
+		keyData := keyBigInt.Bytes()
+		if len(keyData) < 32 {
+			extra := make([]byte, 32-len(keyData))
+			keyData = append(extra, keyData...)
+		}
+
+		child.KeyData = keyData
 		child.Version = PrivateKeyVersion
 	} else {
 		// Case #3: childKey = serP(point(parse256(IL)) + parentKey)
@@ -209,9 +263,29 @@ func (k *ExtendedKey) Child(i uint32) (*ExtendedKey, error) {
 	return child, nil
 }
 
+// ChildForPurpose derives the child key at index i using a derivation path based on the purpose.
+func (k *ExtendedKey) ChildForPurpose(p KeyPurpose, i uint32) (*ExtendedKey, error) {
+	switch p {
+	case KeyPurposeWallet:
+		return k.EthBIP44Child(i)
+	case KeyPurposeChat:
+		return k.EthEIP1581ChatChild(i)
+	default:
+		return nil, ErrInvalidKeyPurpose
+	}
+}
+
 // BIP44Child returns Status CKD#i (where i is child index).
 // BIP44 format is used: m / purpose' / coin_type' / account' / change / address_index
+// BIP44Child is depracated in favour of EthBIP44Child
+// Param coinType is deprecated; we override it to always use CoinTypeETH.
 func (k *ExtendedKey) BIP44Child(coinType, i uint32) (*ExtendedKey, error) {
+	return k.EthBIP44Child(i)
+}
+
+// BIP44Child returns Status CKD#i (where i is child index).
+// BIP44 format is used: m / purpose' / coin_type' / account' / change / address_index
+func (k *ExtendedKey) EthBIP44Child(i uint32) (*ExtendedKey, error) {
 	if !k.IsPrivate {
 		return nil, ErrInvalidMasterKey
 	}
@@ -221,13 +295,28 @@ func (k *ExtendedKey) BIP44Child(coinType, i uint32) (*ExtendedKey, error) {
 	}
 
 	// m/44'/60'/0'/0/index
-	extKey, err := k.Derive([]uint32{
-		HardenedKeyStart + 44,       // purpose
-		HardenedKeyStart + coinType, // cointype
-		HardenedKeyStart + 0,        // account
-		0,                           // 0 - public, 1 - private
-		i,                           // index
-	})
+	extKey, err := k.Derive(append(EthBIP44ParentPath, i))
+	if err != nil {
+		return nil, err
+	}
+
+	return extKey, nil
+}
+
+// EthEIP1581ChatChild returns the whisper key #i (where i is child index).
+// EthEIP1581ChatChild format is used is the one defined in the EIP-1581:
+// m / 43' / coin_type' / 1581' / key_type / index
+func (k *ExtendedKey) EthEIP1581ChatChild(i uint32) (*ExtendedKey, error) {
+	if !k.IsPrivate {
+		return nil, ErrInvalidMasterKey
+	}
+
+	if k.Depth != 0 {
+		return nil, ErrInvalidMasterKey
+	}
+
+	// m/43'/60'/1581'/0/index
+	extKey, err := k.Derive(append(EthEIP1581ChatParentPath, i))
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +372,6 @@ func (k *ExtendedKey) String() string {
 	}
 
 	var childNumBytes [4]byte
-	depthByte := byte(k.Depth % 256)
 	binary.BigEndian.PutUint32(childNumBytes[:], k.ChildNumber)
 
 	// The serialized format is:
@@ -291,7 +379,7 @@ func (k *ExtendedKey) String() string {
 	//   child num (4) || chain code (32) || key data (33) || checksum (4)
 	serializedBytes := make([]byte, 0, serializedKeyLen+4)
 	serializedBytes = append(serializedBytes, k.Version...)
-	serializedBytes = append(serializedBytes, depthByte)
+	serializedBytes = append(serializedBytes, k.Depth)
 	serializedBytes = append(serializedBytes, k.FingerPrint...)
 	serializedBytes = append(serializedBytes, childNumBytes[:]...)
 	serializedBytes = append(serializedBytes, k.ChainCode...)
@@ -360,7 +448,7 @@ func NewKeyFromString(key string) (*ExtendedKey, error) {
 
 	// Deserialize each of the payload fields.
 	version := payload[:4]
-	depth := uint16(payload[4:5][0])
+	depth := payload[4:5][0]
 	fingerPrint := payload[5:9]
 	childNumber := binary.BigEndian.Uint32(payload[9:13])
 	chainCode := payload[13:45]

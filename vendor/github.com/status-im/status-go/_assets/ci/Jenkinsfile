@@ -1,0 +1,115 @@
+pipeline {
+  agent { label 'linux' }
+
+  parameters {
+    booleanParam(
+      name: 'RELEASE',
+      description: 'Enable to create a new release on GitHub and DigitalOcean Space.',
+      defaultValue: false,
+    )
+  }
+
+  options {
+    disableConcurrentBuilds()
+    /* Go requires a certain directory structure */
+    checkoutToSubdirectory('src/github.com/status-im/status-go')
+    /* manage how many builds we keep */
+    buildDiscarder(logRotator(
+      numToKeepStr: '30',
+      daysToKeepStr: '30',
+    ))
+  }
+
+  environment {
+    STATUS_PATH = 'src/github.com/status-im/status-go'
+    GOPATH = "${env.WORKSPACE}"
+    PATH = "${env.PATH}:${env.GOPATH}/bin"
+  }
+
+  stages {
+    stage('Prep') {
+      steps { script {
+        lib = load("${env.STATUS_PATH}/_assets/ci/lib.groovy")
+        version = readFile("${STATUS_PATH}/VERSION").trim()
+        println("Version: ${version}")
+        println("Git Branch: ${lib.gitBranch()}")
+        println("Git Commit: ${lib.gitCommit()}")
+        /* save and create a dir for artifacts */
+        dest = "${env.WORKSPACE}/pkg"
+        sh "mkdir -p ${dest}"
+      } }
+    }
+    stage('Setup') { steps { dir(env.STATUS_PATH) {
+      sh 'make setup'
+      sh 'make xgo'
+    } } }
+    stage('Lint') { steps { dir(env.STATUS_PATH) {
+      sh 'make ci'
+    } } }
+    stage('Build') {
+      parallel {
+        stage('Android') {
+          stages {
+            stage('Compile') { steps { dir(env.STATUS_PATH) {
+              sh 'make statusgo-android'
+              sh "cp build/bin/statusgo-android-16.aar ${dest}/status-go-android-${lib.suffix()}.aar"
+            } } }
+            stage('Archive') { steps {
+              archiveArtifacts("pkg/status-go-android-${lib.suffix()}.aar")
+            } }
+            stage('Upload') { steps { script {
+              lib.uploadArtifact("pkg/status-go-android-${lib.suffix()}.aar")
+            } } }
+          }
+        }
+        stage('iOS') {
+          stages {
+            stage('Compile') { steps { dir(env.STATUS_PATH) {
+              sh 'make statusgo-ios-simulator'
+              dir('build/bin/statusgo-ios-9.3-framework') {
+                sh 'zip -r status-go-ios.zip Statusgo.framework'
+                sh "cp status-go-ios.zip ${dest}/status-go-ios-${lib.suffix()}.zip"
+              }
+            } } }
+            stage('Archive') { steps {
+              archiveArtifacts("pkg/status-go-ios-${lib.suffix()}.zip")
+            } }
+            stage('Upload') { steps { script {
+              lib.uploadArtifact("pkg/status-go-ios-${lib.suffix()}.zip")
+            } } }
+          }
+        }
+        stage('Desktop') {
+          stages {
+            stage('Prepare') { steps { dir(env.STATUS_PATH) {
+              sh "zip -r ${dest}/status-go-desktop-${lib.suffix()}.zip . -x *.git"
+            } } }
+            stage('Archive') { steps {
+              archiveArtifacts("pkg/status-go-desktop-${lib.suffix()}.zip")
+            } }
+            stage('Upload') { steps { script {
+              lib.uploadArtifact("pkg/status-go-desktop-${lib.suffix()}.zip")
+            } } }
+          }
+        }
+      }
+    }
+    stage('Release') { when { expression { params.RELEASE == true } }
+      steps { dir(env.STATUS_PATH) {
+        sh 'make prepare-release'
+        withCredentials([[
+          $class: 'UsernamePasswordMultiBinding',
+          credentialsId: 'status-im-auto',
+          usernameVariable: 'GITHUB_USER',
+          passwordVariable: 'GITHUB_TOKEN'
+        ]]) {
+          sh "yes | make release RELEASE_BRANCH=${lib.gitBranch()}"
+        }
+        sh 'make clean-release'
+      } }
+    }
+    stage('Cleanup') { steps { script {
+      sh "rm -fr ${dest}"
+    } } }
+  }
+}

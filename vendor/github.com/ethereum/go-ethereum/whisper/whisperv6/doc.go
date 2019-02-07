@@ -33,7 +33,6 @@ particularly the notion of singular endpoints.
 package whisperv6
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -44,13 +43,14 @@ const (
 	ProtocolName       = "shh"     // Nickname of the protocol in geth
 
 	// whisper protocol message codes, according to EIP-627
-	statusCode           = 0   // used by whisper protocol
-	messagesCode         = 1   // normal whisper message
-	powRequirementCode   = 2   // PoW requirement
-	bloomFilterExCode    = 3   // bloom filter exchange
-	p2pRequestCode       = 126 // peer-to-peer message, used by Dapp protocol
-	p2pMessageCode       = 127 // peer-to-peer message (to be consumed by the peer, but not forwarded any further)
-	NumberOfMessageCodes = 128
+	statusCode             = 0   // used by whisper protocol
+	messagesCode           = 1   // normal whisper message
+	powRequirementCode     = 2   // PoW requirement
+	bloomFilterExCode      = 3   // bloom filter exchange
+	p2pRequestCompleteCode = 125 // peer-to-peer message, used by Dapp protocol
+	p2pRequestCode         = 126 // peer-to-peer message, used by Dapp protocol
+	p2pMessageCode         = 127 // peer-to-peer message (to be consumed by the peer, but not forwarded any further)
+	NumberOfMessageCodes   = 128
 
 	SizeMask      = byte(3) // mask used to extract the size of payload size field from the flags
 	signatureFlag = byte(4)
@@ -78,12 +78,6 @@ const (
 	DefaultTTL           = 50 // seconds
 	DefaultSyncAllowance = 10 // seconds
 )
-
-type unknownVersionError uint64
-
-func (e unknownVersionError) Error() string {
-	return fmt.Sprintf("invalid envelope version %d", uint64(e))
-}
 
 // MailServer represents a mail server, capable of
 // archiving the old messages for subsequent delivery

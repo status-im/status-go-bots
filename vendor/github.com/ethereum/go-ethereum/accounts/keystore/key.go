@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pborman/uuid"
+	"github.com/status-im/status-go/extkeys"
 )
 
 const (
@@ -46,6 +47,10 @@ type Key struct {
 	// we only store privkey as pubkey/address can be derived from it
 	// privkey in this struct is always in plaintext
 	PrivateKey *ecdsa.PrivateKey
+	// extended key is the root node for new hardened children i.e. sub-accounts
+	ExtendedKey *extkeys.ExtendedKey
+	// next index to be used for sub-account child derivation
+	SubAccountIndex uint32
 }
 
 type keyStore interface {
@@ -65,20 +70,22 @@ type plainKeyJSON struct {
 }
 
 type encryptedKeyJSONV3 struct {
-	Address string     `json:"address"`
-	Crypto  cryptoJSON `json:"crypto"`
-	Id      string     `json:"id"`
-	Version int        `json:"version"`
+	Address         string     `json:"address"`
+	Crypto          CryptoJSON `json:"crypto"`
+	Id              string     `json:"id"`
+	Version         int        `json:"version"`
+	ExtendedKey     CryptoJSON `json:"extendedkey"`
+	SubAccountIndex uint32     `json:"subaccountindex"`
 }
 
 type encryptedKeyJSONV1 struct {
 	Address string     `json:"address"`
-	Crypto  cryptoJSON `json:"crypto"`
+	Crypto  CryptoJSON `json:"crypto"`
 	Id      string     `json:"id"`
 	Version string     `json:"version"`
 }
 
-type cryptoJSON struct {
+type CryptoJSON struct {
 	Cipher       string                 `json:"cipher"`
 	CipherText   string                 `json:"ciphertext"`
 	CipherParams cipherparamsJSON       `json:"cipherparams"`
@@ -137,6 +144,40 @@ func newKeyFromECDSA(privateKeyECDSA *ecdsa.PrivateKey) *Key {
 	return key
 }
 
+func newKeyForPurposeFromExtendedKey(keyPurpose extkeys.KeyPurpose, extKey *extkeys.ExtendedKey) (*Key, error) {
+	var (
+		extChild1, extChild2 *extkeys.ExtendedKey
+		err                  error
+	)
+
+	if extKey.Depth == 0 { // we are dealing with master key
+		// CKD#1 - main account
+		extChild1, err = extKey.ChildForPurpose(keyPurpose, 0)
+		if err != nil {
+			return &Key{}, err
+		}
+
+		// CKD#2 - sub-accounts root
+		extChild2, err = extKey.ChildForPurpose(keyPurpose, 1)
+		if err != nil {
+			return &Key{}, err
+		}
+	} else { // we are dealing with non-master key, so it is safe to persist and extend from it
+		extChild1 = extKey
+		extChild2 = extKey
+	}
+
+	privateKeyECDSA := extChild1.ToECDSA()
+	id := uuid.NewRandom()
+	key := &Key{
+		Id:          id,
+		Address:     crypto.PubkeyToAddress(privateKeyECDSA.PublicKey),
+		PrivateKey:  privateKeyECDSA,
+		ExtendedKey: extChild2,
+	}
+	return key, nil
+}
+
 // NewKeyForDirectICAP generates a key whose address fits into < 155 bits so it can fit
 // into the Direct ICAP spec. for simplicity and easier compatibility with other libs, we
 // retry until the first byte is 0.
@@ -171,7 +212,10 @@ func storeNewKey(ks keyStore, rand io.Reader, auth string) (*Key, accounts.Accou
 	if err != nil {
 		return nil, accounts.Account{}, err
 	}
-	a := accounts.Account{Address: key.Address, URL: accounts.URL{Scheme: KeyStoreScheme, Path: ks.JoinPath(keyFileName(key.Address))}}
+	a := accounts.Account{
+		Address: key.Address,
+		URL:     accounts.URL{Scheme: KeyStoreScheme, Path: ks.JoinPath(keyFileName(key.Address))},
+	}
 	if err := ks.StoreKey(a.URL.Path, key, auth); err != nil {
 		zeroKey(key.PrivateKey)
 		return nil, a, err
@@ -179,26 +223,34 @@ func storeNewKey(ks keyStore, rand io.Reader, auth string) (*Key, accounts.Accou
 	return key, a, err
 }
 
-func writeKeyFile(file string, content []byte) error {
+func writeTemporaryKeyFile(file string, content []byte) (string, error) {
 	// Create the keystore directory with appropriate permissions
 	// in case it is not present yet.
 	const dirPerm = 0700
 	if err := os.MkdirAll(filepath.Dir(file), dirPerm); err != nil {
-		return err
+		return "", err
 	}
 	// Atomic write: create a temporary hidden file first
 	// then move it into place. TempFile assigns mode 0600.
 	f, err := ioutil.TempFile(filepath.Dir(file), "."+filepath.Base(file)+".tmp")
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err := f.Write(content); err != nil {
 		f.Close()
 		os.Remove(f.Name())
-		return err
+		return "", err
 	}
 	f.Close()
-	return os.Rename(f.Name(), file)
+	return f.Name(), nil
+}
+
+func writeKeyFile(file string, content []byte) error {
+	name, err := writeTemporaryKeyFile(file, content)
+	if err != nil {
+		return err
+	}
+	return os.Rename(name, file)
 }
 
 // keyFileName implements the naming convention for keyfiles:
@@ -216,5 +268,6 @@ func toISO8601(t time.Time) string {
 	} else {
 		tz = fmt.Sprintf("%03d00", offset/3600)
 	}
-	return fmt.Sprintf("%04d-%02d-%02dT%02d-%02d-%02d.%09d%s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), tz)
+	return fmt.Sprintf("%04d-%02d-%02dT%02d-%02d-%02d.%09d%s",
+		t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), tz)
 }

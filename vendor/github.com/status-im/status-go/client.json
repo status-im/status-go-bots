@@ -1,0 +1,23 @@
+{
+  "Rendezvous": false,
+  "APIModules": "eth,net,web3,peer,admin,shhext,shh",
+  "HTTPEnabled": true,
+  "HTTPHost": "0.0.0.0",
+  "HTTPPort": 8546,
+  "NoDiscovery": false,
+  "ListenAddr": "127.0.0.1:30300",
+  "DataDir": "/tmp/d1",
+  "KeystoreDir": "/tmp/d1k",
+  "ClusterConfig": {
+    "Enabled": true,
+    "Fleet": "eth.beta",
+    "BootNodes": [
+"enode://da61e9eff86a56633b635f887d8b91e0ff5236bbc05b8169834292e92afb92929dcf6efdbf373a37903da8fe0384d5a0a8247e83f1ce211aa429200b6d28c548@47.91.156.93:30504"
+    ],
+    "TrustedMailServers": [
+    ],
+    "StaticNodes": [
+    ],
+    "RendezvousNodes": [ ]
+  }
+}
