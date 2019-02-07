@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"net/rpc"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mkideal/cli"
@@ -24,19 +25,20 @@ func main() {
 		messages := NewMessagesStore(1000)
 		defer messages.Close()
 
-		conn, err := sdk.Connect(conf.Username, conf.Password)
-		if err != nil {
-			panic("Couldn't connect to status")
-		}
+		rpcClient, err := rpc.Dial("http://localhost:8545")
+		checkErr(err)
 
-		ch, err := conn.Join(conf.Channel)
-		if err != nil {
-			panic("Couldn't connect to status")
-		}
+		client := sdk.New(rpcClient)
 
-		ch.Subscribe(func(msg *sdk.Msg) {
-			log.Println("received a message", msg)
-			if msg != nil {
+		a, err := client.SignupAndLogin(conf.Password)
+		checkErr(err)
+
+		ch, err := a.JoinPublicChannel("igorm-test")
+		checkErr(err)
+
+		_, _ = ch.Subscribe(func(m *sdk.Msg) {
+			if m != nil {
+				log.Println("Message from ", m.From, " with body: ", m.Raw)
 				if err := messages.Add(*msg); err != nil {
 					log.Printf("Error while storing message: ERR: %v", err)
 				}
